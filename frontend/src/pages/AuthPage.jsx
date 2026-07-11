@@ -11,7 +11,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import toast from 'react-hot-toast';
+
 import { RiMailLine, RiLockLine, RiUserLine, RiCodeSSlashLine, RiShieldCheckLine } from 'react-icons/ri';
 
 import useAuth from '../hooks/useAuth.js';
@@ -70,12 +70,9 @@ const LoginForm = ({ onSwitchTab }) => {
     setLoading(false);
 
     if (!result.success) {
-      toast.error(result.error || 'Login failed');
       setErrors({ form: result.error });
       return;
     }
-
-    toast.success('Welcome back!');
     // Navigation handled by App.jsx based on role
   };
 
@@ -170,20 +167,16 @@ const RegisterForm = ({ onSwitchTab }) => {
     setLoading(false);
 
     if (!result.success) {
-      toast.error(result.error || 'Registration failed');
       setErrors({ form: result.error });
       return;
     }
 
     if (result.requiresConfirmation) {
-      toast.success('Account created! Please check your email to confirm your account.', {
-        duration: 6000,
-      });
-      onSwitchTab(); // Switch to login tab
-    } else {
-      toast.success('Account created! Welcome to SmartReview 🎉');
-      // Navigation handled by App.jsx
+      // Show inline confirmation message and switch to login tab
+      setErrors({ form: 'Account created! Please check your email to confirm before logging in.' });
+      onSwitchTab();
     }
+    // On success with no confirmation needed, navigation handled by App.jsx via onAuthStateChange
   };
 
   return (

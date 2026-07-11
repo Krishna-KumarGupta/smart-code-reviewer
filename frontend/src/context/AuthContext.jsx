@@ -25,7 +25,7 @@
  */
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import toast from 'react-hot-toast';
+
 import supabase from '../services/supabase.js';
 
 // ─── Create Context ────────────────────────────────────────────────────────────
@@ -33,9 +33,9 @@ export const AuthContext = createContext(null);
 
 // ─── AuthProvider ──────────────────────────────────────────────────────────────
 export const AuthProvider = ({ children }) => {
-  const [user, setUser]         = useState(null);
-  const [profile, setProfile]   = useState(null);
-  const [loading, setLoading]   = useState(true);
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
 
   // ─── Fetch Profile Row ────────────────────────────────────────────────────
@@ -170,10 +170,9 @@ export const AuthProvider = ({ children }) => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) {
-        toast.error('Logout failed. Please try again.');
-        return;
+        console.error('[AuthContext] Logout error:', error.message);
       }
-      toast.success('Logged out successfully');
+      // State cleared by onAuthStateChange listener → redirect handled by ProtectedRoute
     } catch (err) {
       console.error('[AuthContext] Logout error:', err.message);
     }
@@ -209,8 +208,8 @@ export const AuthProvider = ({ children }) => {
 
     // Whitelist safe fields only — never allow role
     const safeUpdates = {};
-    if (updates.full_name    !== undefined) safeUpdates.full_name    = updates.full_name;
-    if (updates.avatar_url   !== undefined) safeUpdates.avatar_url   = updates.avatar_url;
+    if (updates.full_name !== undefined) safeUpdates.full_name = updates.full_name;
+    if (updates.avatar_url !== undefined) safeUpdates.avatar_url = updates.avatar_url;
     if (updates.github_username !== undefined) safeUpdates.github_username = updates.github_username;
 
     if (Object.keys(safeUpdates).length === 0) {
