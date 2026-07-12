@@ -15,6 +15,8 @@
  *   - login(email, password)
  *   - register(fullName, email, password)
  *   - logout()
+ *   - forgotPassword(email)   ← sends Supabase password-reset email
+ *   - resetPassword(newPwd)   ← updates password after reset link is clicked
  *   - refreshProfile()        ← re-fetches profile from DB
  *   - updateProfile(data)     ← updates profile in DB + refreshes state
  *
@@ -178,6 +180,59 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // ─── Forgot Password ──────────────────────────────────────────────────────
+  /**
+   * Sends a password-reset email via Supabase.
+   * The reset link in the email will point to /reset-password.
+   *
+   * @param {string} email
+   * @returns {Promise<{ success: boolean, error?: string }>}
+   */
+  const forgotPassword = async (email) => {
+    setAuthError(null);
+    try {
+      const redirectTo = `${window.location.origin}/reset-password`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo,
+      });
+      if (error) {
+        const message = error.message || 'Failed to send reset email. Please try again.';
+        setAuthError(message);
+        return { success: false, error: message };
+      }
+      return { success: true };
+    } catch (err) {
+      const message = 'An unexpected error occurred. Please try again.';
+      setAuthError(message);
+      return { success: false, error: message };
+    }
+  };
+
+  // ─── Reset Password ───────────────────────────────────────────────────────
+  /**
+   * Updates the current user's password.
+   * Must be called after the user has clicked the reset link (has a valid session).
+   *
+   * @param {string} newPassword
+   * @returns {Promise<{ success: boolean, error?: string }>}
+   */
+  const resetPassword = async (newPassword) => {
+    setAuthError(null);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        const message = error.message || 'Failed to update password. Please try again.';
+        setAuthError(message);
+        return { success: false, error: message };
+      }
+      return { success: true };
+    } catch (err) {
+      const message = 'An unexpected error occurred. Please try again.';
+      setAuthError(message);
+      return { success: false, error: message };
+    }
+  };
+
   // ─── refreshProfile ───────────────────────────────────────────────────────
   /**
    * Manually re-fetch the profile from Supabase and update state.
@@ -252,6 +307,8 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    forgotPassword,
+    resetPassword,
 
     // Profile Actions
     refreshProfile,

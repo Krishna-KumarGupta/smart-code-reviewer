@@ -3,7 +3,8 @@
  *
  * Route structure:
  *
- *  /                     → AuthPage  (public — redirects if already logged in)
+ *  /                     → AuthPage         (public — redirects if already logged in)
+ *  /reset-password       → ResetPasswordPage (public — handles Supabase email link)
  *
  *  ProtectedRoute        (auth guard — redirects to / if not logged in)
  *   └─ DashboardLayout   (Navbar + Sidebar + Outlet shell)
@@ -29,6 +30,7 @@ import DashboardLayout  from './layouts/DashboardLayout.jsx';
 import ErrorBoundary    from './components/ui/ErrorBoundary.jsx';
 
 import AuthPage           from './pages/AuthPage.jsx';
+import ResetPasswordPage  from './pages/ResetPasswordPage.jsx';
 import HomePage           from './pages/HomePage.jsx';
 import HistoryPage        from './pages/HistoryPage.jsx';
 import AdminPage          from './pages/AdminPage.jsx';
@@ -67,6 +69,7 @@ const App = () => {
           <Routes>
             {/* ── Public ──────────────────────────────────────────────── */}
             <Route path="/" element={<AuthPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
 
             {/* ── Protected: any authenticated user ───────────────────── */}
             <Route element={<ProtectedRoute />}>
