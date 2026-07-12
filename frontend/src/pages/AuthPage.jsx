@@ -461,10 +461,9 @@ const AuthPage = () => {
                     }
                     className={`
                       relative flex-1 py-4 text-sm font-semibold transition-all duration-200
-                      ${
-                        activeView === tab.key
-                          ? 'text-primary'
-                          : 'text-text-muted hover:text-text-primary'
+                      ${activeView === tab.key
+                        ? 'text-primary'
+                        : 'text-text-muted hover:text-text-primary'
                       }
                     `}
                   >

@@ -88,7 +88,7 @@ const ResetPasswordPage = () => {
       return;
     }
 
-    toast.success('Password updated successfully! Please sign in.', {
+    toast.success('Password updated successfully!', {
       duration: 5000,
       icon: '🔐',
     });
