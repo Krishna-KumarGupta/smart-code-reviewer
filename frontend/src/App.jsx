@@ -36,6 +36,7 @@ import HistoryPage        from './pages/HistoryPage.jsx';
 import AdminPage          from './pages/AdminPage.jsx';
 import RepositoriesPage   from './pages/RepositoriesPage.jsx';
 import SettingsPage       from './pages/SettingsPage.jsx';
+import GitHubSettingsPage from './pages/GitHubSettingsPage.jsx';
 import NotFoundPage       from './pages/NotFoundPage.jsx';
 
 // ─── Toast Config ─────────────────────────────────────────────────────────────
@@ -74,10 +75,11 @@ const App = () => {
             {/* ── Protected: any authenticated user ───────────────────── */}
             <Route element={<ProtectedRoute />}>
               <Route element={<DashboardLayout />}>
-                <Route path="/home"     element={<HomePage />} />
-                <Route path="/history"  element={<HistoryPage />} />
-                <Route path="/repos"    element={<RepositoriesPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/home"            element={<HomePage />} />
+                <Route path="/history"         element={<HistoryPage />} />
+                <Route path="/repos"           element={<RepositoriesPage />} />
+                <Route path="/settings"        element={<SettingsPage />} />
+                <Route path="/settings/github" element={<GitHubSettingsPage />} />
               </Route>
             </Route>
 
