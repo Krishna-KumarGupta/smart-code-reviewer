@@ -20,6 +20,7 @@ import morgan from 'morgan';
 
 import profileRoutes from './src/routes/profile.js';
 import adminRoutes   from './src/routes/admin.js';
+import githubRoutes  from './src/github/routes/githubRoutes.js';
 import notFound      from './src/middleware/notFound.js';
 import errorHandler  from './src/middleware/errorHandler.js';
 
@@ -58,6 +59,7 @@ app.get('/health', (_req, res) => {
 // ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api', profileRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/github', githubRoutes);
 
 // ─── 404 — must be after all routes ──────────────────────────────────────────
 app.use(notFound);
