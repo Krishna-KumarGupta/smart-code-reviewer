@@ -141,6 +141,21 @@ export const handleGitHubCallback = async (req, res, next) => {
 
     const githubUser = await userResponse.json();
 
+    // ── Verify that the newly issued token includes the repo scope needed for
+    // private repositories. GitHub exposes granted scopes via response headers.
+    const grantedScopesHeader = userResponse.headers.get('x-oauth-scopes');
+    const grantedScopes = (grantedScopesHeader || '')
+      .split(',')
+      .map((scope) => scope.trim().toLowerCase())
+      .filter(Boolean);
+
+    const hasRepoScope = grantedScopes.includes('repo');
+
+    if (!hasRepoScope) {
+      console.error('[githubController] Missing repo scope for private repository access');
+      return res.redirect(`${frontendUrl}/home?github=error&reason=missing_repo_scope`);
+    }
+
     // ── Store tokens (encrypt + persist) — only githubTokenService does this ─
     await storeTokens(userId, githubUser, access_token, refresh_token, expiresAt);
 

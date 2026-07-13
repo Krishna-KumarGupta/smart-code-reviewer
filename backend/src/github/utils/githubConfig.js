@@ -57,8 +57,8 @@ const githubConfig = Object.freeze({
   tokenUrl:     'https://github.com/login/oauth/access_token',
   userApiUrl:   'https://api.github.com/user',
 
-  // OAuth scopes — read:user and user:email are enough for account connection
-  scopes: 'read:user user:email',
+  // OAuth scopes — include repo so private repositories can be accessed
+  scopes: 'read:user user:email repo',
 
   // State token validity window (milliseconds) — reject callbacks older than 10 min
   stateMaxAgeMs: 10 * 60 * 1000,
