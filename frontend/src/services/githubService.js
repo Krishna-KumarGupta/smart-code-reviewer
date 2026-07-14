@@ -53,6 +53,30 @@ const githubService = {
     const response = await api.post('/api/github/disconnect');
     return response.data.data;
   },
+
+  /**
+   * Enable AI Review for a synced repository.
+   * Automatically creates a GitHub webhook via the backend.
+   *
+   * @param {string} repoId - Local Supabase UUID of the repository row
+   * @returns {Promise<{ success: boolean, message: string }>}
+   */
+  enableAIReview: async (repositoryId) => {
+    const response = await api.post(`/api/github/repositories/${repositoryId}/webhook`);
+    return response.data;
+  },
+
+  /**
+   * Disable AI Review for a synced repository.
+   * Automatically removes the GitHub webhook via the backend.
+   *
+   * @param {string} repoId - Local Supabase UUID of the repository row
+   * @returns {Promise<{ success: boolean, message: string }>}
+   */
+  disableAIReview: async (repositoryId) => {
+    const response = await api.delete(`/api/github/repositories/${repositoryId}/webhook`);
+    return response.data;
+  },
 };
 
 export default githubService;

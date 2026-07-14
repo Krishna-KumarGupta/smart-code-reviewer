@@ -29,7 +29,9 @@ const DisconnectGitHubButton = ({ onSuccess, className = '' }) => {
       // Refresh both GitHub status and profile in parallel
       await Promise.all([refreshGitHubStatus(), refreshProfile()]);
 
-      toast.success('GitHub account disconnected');
+      toast.success(
+        'GitHub account disconnected. You can connect any GitHub account again. GitHub uses the account currently signed into github.com.'
+      );
       onSuccess?.();
     } catch (err) {
       toast.error(err?.response?.data?.error || 'Failed to disconnect GitHub');

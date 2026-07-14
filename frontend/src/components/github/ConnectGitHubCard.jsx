@@ -25,14 +25,13 @@ import {
   RiGithubLine,
   RiLoader4Line,
   RiCheckLine,
-  RiQuestionLine,
 } from "react-icons/ri";
 
 import useAuth from "../../hooks/useAuth.js";
 import githubService from "../../services/githubService.js";
 import GitHubStatus from "./GitHubStatus.jsx";
 import DisconnectGitHubButton from "./DisconnectGitHubButton.jsx";
-import Modal from "../ui/Modal.jsx";
+import ConnectGithubModal from "./ConnectGithubModal.jsx";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Connected State
@@ -90,7 +89,7 @@ const ConnectedView = ({ username, avatar }) => (
 // Not Connected State
 // ─────────────────────────────────────────────────────────────────────────────
 
-const NotConnectedView = ({ onConnect, loading, onOpenHelp }) => (
+const NotConnectedView = ({ onConnect, loading }) => (
   <motion.div
     key="not-connected"
     initial={{ opacity: 0, scale: 0.97 }}
@@ -141,14 +140,6 @@ const NotConnectedView = ({ onConnect, loading, onOpenHelp }) => (
       )}
     </button>
 
-    <button
-      type="button"
-      onClick={onOpenHelp}
-      className="inline-flex items-center gap-2 text-sm font-medium text-primary transition hover:text-accent"
-    >
-      <RiQuestionLine />
-      Need help connecting a different GitHub account?
-    </button>
   </motion.div>
 );
 
@@ -166,7 +157,8 @@ const ConnectGitHubCard = () => {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [loginLoading, setLoginLoading] = useState(false);
-  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [hasConnectedOnce, setHasConnectedOnce] = useState(false);
 
   useEffect(() => {
     const githubParam = searchParams.get("github");
@@ -174,6 +166,7 @@ const ConnectGitHubCard = () => {
     if (!githubParam) return;
 
     if (githubParam === "connected") {
+      setHasConnectedOnce(true);
       refreshGitHubStatus().then(() => {
         toast.success("🎉 GitHub account connected!", {
           duration: 5000,
@@ -199,6 +192,7 @@ const ConnectGitHubCard = () => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleConnect = async () => {
+    setIsConnectModalOpen(false);
     setLoginLoading(true);
 
     try {
@@ -226,49 +220,16 @@ const ConnectGitHubCard = () => {
   return (
     <>
       <NotConnectedView
-        onConnect={handleConnect}
+        onConnect={() => setIsConnectModalOpen(true)}
         loading={loginLoading}
-        onOpenHelp={() => setIsHelpModalOpen(true)}
       />
 
-      <Modal
-        isOpen={isHelpModalOpen}
-        onClose={() => setIsHelpModalOpen(false)}
-        title="Connect a different GitHub account"
-        maxWidth="max-w-xl"
-      >
-        <div className="space-y-5">
-          <p className="text-sm leading-6 text-text-muted">
-            GitHub uses the account currently signed in to github.com in this browser.
-          </p>
-
-          <div className="rounded-2xl border border-border bg-surface-2 p-4 text-sm text-text-muted">
-            <ol className="list-decimal space-y-2 pl-5">
-              <li>If you&apos;re already connected in this app, disconnect your GitHub account first.</li>
-              <li>Switch GitHub accounts on github.com, or sign out and sign back in with the desired account.</li>
-              <li>Return to this app and click &quot;Connect GitHub&quot; again.</li>
-            </ol>
-          </div>
-
-          <p className="text-sm leading-6 text-text-muted">
-            Alternative: use a Private/Incognito window and sign in to the GitHub account you want to connect.
-          </p>
-
-          <p className="text-sm leading-6 text-text-muted">
-            Disconnecting from this application does not sign you out of GitHub. It only removes the connection between this application and your GitHub account.
-          </p>
-
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => setIsHelpModalOpen(false)}
-              className="rounded-xl bg-gradient-to-r from-primary to-accent px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <ConnectGithubModal
+        isOpen={isConnectModalOpen && !hasConnectedOnce}
+        onClose={() => setIsConnectModalOpen(false)}
+        onContinue={handleConnect}
+        loading={loginLoading}
+      />
     </>
   );
 };

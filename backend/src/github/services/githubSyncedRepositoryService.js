@@ -12,7 +12,7 @@ import { supabaseAdmin } from '../../config/supabase.js';
 export const getUserSyncedRepositories = async (userId) => {
   const { data, error } = await supabaseAdmin
     .from('repositories')
-    .select('id, user_id, github_repo_id, full_name, name, owner, private, default_branch, is_active, updated_at')
+    .select('id, user_id, github_repo_id, full_name, name, owner, private, default_branch, is_active, github_webhook_id, updated_at')
     .eq('user_id', userId)
     .eq('is_active', true)
     .order('updated_at', { ascending: false });
