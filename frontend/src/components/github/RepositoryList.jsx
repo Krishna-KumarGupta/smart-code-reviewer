@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { RiGithubLine, RiRefreshLine, RiCheckLine } from 'react-icons/ri';
+import { RiGithubLine, RiRefreshLine, RiCheckLine, RiToggleLine } from 'react-icons/ri';
 import githubService from '../../services/githubService.js';
 
 const RepositoryList = ({ className = '' }) => {
@@ -41,6 +41,25 @@ const RepositoryList = ({ className = '' }) => {
     setSelectedRepoId(repo.id);
   };
 
+  const handleToggleAIReview = async (repo, event) => {
+    event.stopPropagation();
+
+    try {
+      if (repo.github_webhook_id) {
+        await githubService.disableAIReview(repo.id);
+        toast.success('AI Review disabled');
+      } else {
+        await githubService.enableAIReview(repo.id);
+        toast.success('AI Review enabled');
+      }
+
+      await loadRepositories();
+    } catch (error) {
+      console.error('Failed to toggle AI review:', error);
+      toast.error(error?.response?.data?.error || 'Unable to update AI Review');
+    }
+  };
+
   return (
     <div className={`space-y-4 ${className}`.trim()}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -77,10 +96,17 @@ const RepositoryList = ({ className = '' }) => {
             const visibilityLabel = repo.private ? 'Private' : 'Public';
 
             return (
-              <motion.button
+              <motion.div
                 key={repo.id}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => handleSelectRepo(repo)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    handleSelectRepo(repo);
+                  }
+                }}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className={`rounded-2xl border p-5 text-left transition ${
@@ -120,10 +146,31 @@ const RepositoryList = ({ className = '' }) => {
                 </div>
 
                 <div className="mt-4 flex items-center justify-between text-sm">
+                  <div className="flex flex-col gap-1">
+                    <span className="font-medium text-text-primary">AI Review</span>
+                    <span className="text-xs text-text-muted">
+                      {repo.github_webhook_id ? 'Enabled · Webhook Active' : 'Disabled · Webhook Inactive'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(event) => handleToggleAIReview(repo, event)}
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition ${
+                      repo.github_webhook_id
+                        ? 'bg-success/10 text-success hover:bg-success/20'
+                        : 'bg-primary/10 text-primary hover:bg-primary/20'
+                    }`}
+                  >
+                    <RiToggleLine className="text-sm" />
+                    {repo.github_webhook_id ? 'Disable AI Review' : 'Enable AI Review'}
+                  </button>
+                </div>
+
+                <div className="mt-4 flex items-center justify-between text-sm">
                   <span className="text-primary font-medium">Review Pull Requests →</span>
                   <RiGithubLine className="text-primary" />
                 </div>
-              </motion.button>
+              </motion.div>
             );
           })}
         </div>

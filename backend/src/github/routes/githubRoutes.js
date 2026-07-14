@@ -23,6 +23,7 @@ import {
   getRepositories,
   syncRepositories,
   getSyncedRepositories,
+  enableRepository,
 } from '../controllers/githubController.js';
 
 const router = express.Router();
@@ -42,5 +43,11 @@ router.get('/repos',       verifyJWT, getRepositories);
 router.get('/repositories', verifyJWT, getSyncedRepositories);
 router.post('/sync-repositories', verifyJWT, syncRepositories);
 router.post('/disconnect', verifyJWT, disconnectGitHub);
+
+// ─── Repository Webhook Enablement (Phase 3B) ───────────────────────────────
+// JWT required: we verify the user owns the repository before calling the GitHub API.
+// :repoId is the LOCAL Supabase UUID — not the GitHub integer repo ID.
+// This prevents cross-user enumeration attacks via sequential numeric IDs.
+router.post('/repositories/:repoId/enable', verifyJWT, enableRepository);
 
 export default router;

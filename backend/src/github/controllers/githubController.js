@@ -26,6 +26,7 @@ import { getGitHubAccount, setGitHubConnected }  from '../services/githubOAuthSe
 import { fetchUserRepositories }                  from '../services/githubRepositoryService.js';
 import { syncUserRepositories }                   from '../services/githubRepositorySyncService.js';
 import { getUserSyncedRepositories }              from '../services/githubSyncedRepositoryService.js';
+import { createRepositoryWebhook }               from '../services/githubWebhookCreationService.js';
 import { sendSuccess, sendError }                from '../../utils/response.js';
 
 // ─── GET /api/github/connect ──────────────────────────────────────────────────
@@ -251,6 +252,46 @@ export const getSyncedRepositories = async (req, res, next) => {
     const repositories = await getUserSyncedRepositories(req.user.id);
     return sendSuccess(res, { repositories });
   } catch (err) {
+    next(err);
+  }
+};
+
+// ─── POST /api/github/repositories/:repoId/enable ────────────────────────────
+
+/**
+ * Requires: verifyJWT
+ *
+ * Enables code review for a specific synced repository by automatically
+ * creating a GitHub webhook via the REST API.
+ *
+ * The repository is identified by its local Supabase UUID (:repoId),
+ * not by the GitHub integer ID — this prevents cross-user enumeration.
+ *
+ * Delegates entirely to githubWebhookCreationService — no business logic here.
+ *
+ * Response:
+ *   {
+ *     webhookId:      number,    — The GitHub webhook ID (new or pre-existing)
+ *     alreadyExisted: boolean,   — true if the webhook was already registered
+ *     repository:     object,    — { id, full_name, owner, name }
+ *   }
+ */
+export const enableRepository = async (req, res, next) => {
+  try {
+    const { repoId } = req.params;
+
+    if (!repoId) {
+      return sendError(res, 'Repository ID is required', 400);
+    }
+
+    const result = await createRepositoryWebhook(req.user.id, repoId);
+
+    return sendSuccess(res, result);
+  } catch (err) {
+    // Distinguish between "not found / access denied" (404) and other errors (500)
+    if (err.message?.includes('not found or access denied')) {
+      return sendError(res, err.message, 404);
+    }
     next(err);
   }
 };
