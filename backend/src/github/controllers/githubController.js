@@ -21,13 +21,15 @@
 
 import githubConfig           from '../utils/githubConfig.js';
 import { createSignedState, verifySignedState } from '../utils/stateManager.js';
-import { storeTokens, disconnectAccount }        from '../services/githubTokenService.js';
+import { storeTokens, disconnectAccount, getValidAccessToken }        from '../services/githubTokenService.js';
+import { supabaseAdmin }                         from '../../config/supabase.js';
 import { getGitHubAccount, setGitHubConnected }  from '../services/githubOAuthService.js';
 import { fetchUserRepositories }                  from '../services/githubRepositoryService.js';
 import { syncUserRepositories }                   from '../services/githubRepositorySyncService.js';
 import { getUserSyncedRepositories }              from '../services/githubSyncedRepositoryService.js';
 import { createRepositoryWebhook }               from '../services/githubWebhookCreationService.js';
 import { sendSuccess, sendError }                from '../../utils/response.js';
+import { GitHubService }                         from '../../services/github.service.js';
 
 // ─── GET /api/github/connect ──────────────────────────────────────────────────
 
@@ -295,3 +297,48 @@ export const enableRepository = async (req, res, next) => {
     next(err);
   }
 };
+
+/**
+ * GET /api/github/repos/:owner/:repo/pulls
+ * Requires: verifyJWT
+ *
+ * Retrieves all open pull requests for a given repository.
+ */
+export const getOpenPullRequests = async (req, res, next) => {
+  try {
+    const { owner, repo } = req.params;
+
+    if (!owner || !repo) {
+      return sendError(res, 'Owner and Repository parameters are required', 400);
+    }
+
+    // Retrieve user's valid access token (if connected)
+    const token = req.user?.id ? await getValidAccessToken(req.user.id) : null;
+
+    // Fetch repository details to get installation_id (optional, for logging)
+    const { data: repoRow } = await supabaseAdmin
+      .from('repositories')
+      .select('installation_id')
+      .eq('owner', owner)
+      .eq('name', repo)
+      .maybeSingle();
+
+    // Fetch user github account details to get username (for logging)
+    const { data: accountRow } = await supabaseAdmin
+      .from('github_accounts')
+      .select('github_username')
+      .eq('user_id', req.user?.id)
+      .maybeSingle();
+
+    const extraInfo = {
+      installationId: repoRow?.installation_id || null,
+      authenticatedGitHubUser: accountRow?.github_username || null,
+    };
+
+    const pullRequests = await GitHubService.listOpenPullRequests(owner, repo, token, extraInfo);
+    return sendSuccess(res, { pullRequests });
+  } catch (err) {
+    next(err);
+  }
+};
+

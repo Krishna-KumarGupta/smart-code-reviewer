@@ -75,6 +75,41 @@ export const checkTokenExpiry = (expiresAt) => {
  * @returns {Promise<void>}
  */
 export const storeTokens = async (userId, githubUser, accessToken, refreshToken = null, expiresAt = null) => {
+  // ── Pre-flight diagnostic check ──────────────────────────────────────────
+  // Look up the current row for this Supabase user (if any)
+  const { data: existingByUser } = await supabaseAdmin
+    .from('github_accounts')
+    .select('id, github_user_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  // Look up whether the incoming GitHub account is already owned by someone else
+  const { data: existingByGitHubId } = await supabaseAdmin
+    .from('github_accounts')
+    .select('id, user_id')
+    .eq('github_user_id', githubUser.id)
+    .maybeSingle();
+
+  console.info('[githubTokenService] storeTokens diagnostic:', {
+    supabase_user_id:        userId,
+    incoming_github_user_id: githubUser.id,
+    existing_row_found:      !!existingByUser,
+    existing_row_github_user_id: existingByUser?.github_user_id ?? null,
+    github_id_owned_by_another_user: existingByGitHubId && existingByGitHubId.user_id !== userId,
+    operation: existingByUser ? 'UPDATE (upsert will update existing row)' : 'INSERT (first-time connection)',
+  });
+
+  // ── Conflict guard ───────────────────────────────────────────────────────
+  // The incoming GitHub account is already linked to a DIFFERENT Supabase user.
+  // We must not proceed — doing so would violate the one-github-account-per-user
+  // rule and trigger the unique constraint on github_user_id from a different row.
+  if (existingByGitHubId && existingByGitHubId.user_id !== userId) {
+    throw new Error(
+      `[githubTokenService] storeTokens: GitHub account ${githubUser.id} is already ` +
+      `connected to a different application account. Reconnection refused.`
+    );
+  }
+
   const encrypted_access_token  = encryptToken(accessToken);
   const encrypted_refresh_token = refreshToken ? encryptToken(refreshToken) : null;
 
@@ -101,6 +136,7 @@ export const storeTokens = async (userId, githubUser, accessToken, refreshToken 
     throw new Error(`[githubTokenService] storeTokens: ${error.message}`);
   }
 };
+
 
 /**
  * Retrieve and return a valid (decrypted) access token for a user.
