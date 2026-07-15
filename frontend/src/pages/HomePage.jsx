@@ -55,7 +55,7 @@ const StatCard = ({ icon, label, value, color, delay }) => (
 
 const HomePage = () => {
 
-  const { profile } = useAuth();
+  const { profile, githubConnected } = useAuth();
 
 
   const firstName =
@@ -208,9 +208,11 @@ const HomePage = () => {
 
               <ConnectGitHubCard />
 
-              <div className="mt-6">
-                <RepositoryList />
-              </div>
+              {githubConnected && (
+                <div className="mt-6">
+                  <RepositoryList />
+                </div>
+              )}
 
             </Card>
 

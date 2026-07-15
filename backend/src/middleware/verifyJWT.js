@@ -26,7 +26,7 @@ const verifyJWT = async (req, res, next) => {
         code: 'AUTH_HEADER_MISSING',
       });
     }
-    console.log("Authorization Header:", authHeader);
+    console.info('[verifyJWT] Bearer token received — verifying with Supabase');
 
     const token = authHeader.slice(7); // Remove "Bearer " prefix
 
