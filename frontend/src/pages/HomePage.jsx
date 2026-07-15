@@ -1,11 +1,4 @@
-/**
- * HomePage — User Dashboard
- *
- * Protected page for authenticated users with role='user'.
- * Shows a welcome greeting, profile summary, quick stats,
- * GitHub connection and temporary repository testing.
- */
-
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
@@ -15,12 +8,16 @@ import {
   RiShieldCheckLine,
   RiArrowRightLine,
   RiTimeLine,
+  RiLoader4Line,
 } from 'react-icons/ri';
 
 import useAuth from '../hooks/useAuth.js';
 import Card from '../components/ui/Card.jsx';
 import ConnectGitHubCard from '../components/github/ConnectGitHubCard.jsx';
 import RepositoryList from '../components/github/RepositoryList.jsx';
+import reviewService from '../services/reviewService.js';
+import githubService from '../services/githubService.js';
+import toast from 'react-hot-toast';
 
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
@@ -54,40 +51,72 @@ const StatCard = ({ icon, label, value, color, delay }) => (
 // ─── Home Page ───────────────────────────────────────────────────────────────
 
 const HomePage = () => {
-
   const { profile } = useAuth();
-
+  const [stats, setStats] = useState({
+    totalReviews: 0,
+    queuedReviews: 0,
+    runningReviews: 0,
+    completedReviews: 0,
+    failedReviews: 0,
+    issuesFound: 0,
+  });
 
   const firstName =
     profile?.full_name?.split(' ')[0] || 'there';
 
+  const fetchStats = async () => {
+    try {
+      const data = await reviewService.getUserStats();
+      setStats(data || {
+        totalReviews: 0,
+        queuedReviews: 0,
+        runningReviews: 0,
+        completedReviews: 0,
+        failedReviews: 0,
+        issuesFound: 0,
+      });
+    } catch (e) {
+      console.error('Failed to fetch dashboard stats', e);
+    }
+  };
 
+  useEffect(() => {
+    fetchStats();
+
+    // Listen to review triggered events for auto refresh
+    const handleRefresh = () => fetchStats();
+    window.addEventListener('reviewTriggered', handleRefresh);
+
+    return () => {
+      window.removeEventListener('reviewTriggered', handleRefresh);
+    };
+  }, []);
+
+  // Dynamic Polling Effect: only poll when reviews are actively queueing or running
+  useEffect(() => {
+    const hasActiveReviews = stats.queuedReviews > 0 || stats.runningReviews > 0;
+    if (!hasActiveReviews) return;
+
+    const interval = setInterval(fetchStats, 7000);
+    return () => clearInterval(interval);
+  }, [stats.queuedReviews, stats.runningReviews]);
 
   // Temporary repository test
   const testRepositories = async () => {
     try {
-
       const data = await githubService.getRepositories();
-
       console.log(
         "GitHub Repositories:",
         data
       );
-
-
       alert(
         `Found ${data.repositories.length} repositories`
       );
-
-
     } catch (error) {
-
       console.error(
         "Repository fetch failed:",
         error
       );
-
-
       alert(
         error?.response?.data?.error ||
         error.message ||
@@ -95,8 +124,6 @@ const HomePage = () => {
       );
     }
   };
-
-
 
   const syncRepositories = async () => {
     try {
@@ -111,79 +138,59 @@ const HomePage = () => {
 
   return (
     <div className="min-h-full">
-
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
-
         {/* Hero Greeting */}
-
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
           className="mb-8"
         >
-
           <h2 className="text-3xl font-bold text-text-primary">
-
             Welcome back,
             <span className="gradient-text">
               {" "}{firstName}
             </span>
             {" "}👋
-
           </h2>
-
-
           <p className="text-text-muted mt-1 text-sm">
             Here's an overview of your Smart Code Reviewer dashboard.
           </p>
-
         </motion.div>
 
-
-
         {/* Stats Grid */}
-
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-
-
           <StatCard
-            icon={<RiCodeSSlashLine />}
-            label="Total Reviews"
-            value="0"
-            color="bg-primary/10 text-primary"
+            icon={<RiTimeLine />}
+            label="Reviews Queued"
+            value={stats.queuedReviews}
+            color="bg-warning/10 text-warning"
             delay={0.1}
           />
 
-
           <StatCard
-            icon={<RiShieldCheckLine />}
-            label="Issues Found"
-            value="0"
-            color="bg-accent/10 text-accent"
+            icon={<RiLoader4Line className={stats.runningReviews > 0 ? "animate-spin" : ""} />}
+            label="Reviews Running"
+            value={stats.runningReviews}
+            color="bg-primary/10 text-primary"
             delay={0.15}
           />
 
-
           <StatCard
             icon={<RiHistoryLine />}
-            label="This Week"
-            value="0"
+            label="Completed Reviews"
+            value={stats.completedReviews}
             color="bg-success/10 text-success"
             delay={0.2}
           />
 
-
           <StatCard
-            icon={<RiTimeLine />}
-            label="Avg Review Time"
-            value="—"
-            color="bg-warning/10 text-warning"
+            icon={<RiShieldCheckLine />}
+            label="Issues Found"
+            value={stats.issuesFound}
+            color="bg-accent/10 text-accent"
             delay={0.25}
           />
-
-
         </div>
 
 
