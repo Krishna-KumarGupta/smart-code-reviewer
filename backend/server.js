@@ -23,11 +23,12 @@ import adminRoutes        from './src/routes/admin.js';
 import githubRoutes       from './src/github/routes/githubRoutes.js';
 import githubWebhookRoutes from './src/github/routes/githubWebhookRoutes.js';
 import githubWebhookManagementRoutes from './src/github/routes/githubWebhookManagementRoutes.js';
+import reviewRoutes       from './src/routes/review.routes.js';
 import notFound           from './src/middleware/notFound.js';
 import errorHandler       from './src/middleware/errorHandler.js';
 
 const app  = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // ─── Security & Logging ───────────────────────────────────────────────────────
 app.use(helmet());
@@ -69,6 +70,7 @@ app.use('/api', profileRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/github', githubRoutes);
 app.use('/api/github', githubWebhookManagementRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // ─── 404 — must be after all routes ──────────────────────────────────────────
 app.use(notFound);
