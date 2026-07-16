@@ -44,13 +44,13 @@ const reviewService = {
   },
 
   /**
-   * Create / retry a review for a given repo + PR number.
+   * Retry a failed review.
    *
-   * @param {{ repo_url: string, pr_number: number }} payload
-   * @returns {Promise<{ review: object }>}
+   * @param {string} reviewId
+   * @returns {Promise<{ reviewId: string, status: string }>}
    */
-  createReview: async ({ repo_url, pr_number }) => {
-    const response = await api.post('/api/reviews', { repo_url, pr_number });
+  retryReview: async (reviewId) => {
+    const response = await api.post(`/api/reviews/${reviewId}/retry`);
     return response.data.data;
   },
   getUserStats: async () => {

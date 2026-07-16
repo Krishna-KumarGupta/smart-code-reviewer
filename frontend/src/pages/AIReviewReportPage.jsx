@@ -38,6 +38,7 @@ import {
   RiRefreshLine,
   RiArrowDownLine,
 } from 'react-icons/ri';
+import { toast } from 'react-hot-toast';
 import reviewService from '../services/reviewService.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -314,14 +315,19 @@ const AIReviewReportPage = () => {
   // ── Derived data ──────────────────────────────────────────────────────────
   const repo = review?.repositories;
   const repoUrl = review?.repo_url || (repo ? `https://github.com/${repo.full_name}` : null);
+  const repoName = repo?.full_name || repo?.name || (review?.repo_url ? review.repo_url.replace(/https?:\/\/github\.com\//i, '') : 'Unknown Repo');
 
-  const isReportNull = review?.report_json === null || review?.report_json === undefined;
+  const isReportNull = (review?.report_json === null || review?.report_json === undefined) && review?.status !== 'completed';
 
   // Parsing and normalizing report_json defensively
   let report = review?.report_json;
 
   if (report === null || report === undefined) {
-    report = {};
+    if (review?.status === 'completed') {
+      report = { score: 100, review: "No code issues detected. Clean bill of health.", improvements: [], bugs: [] };
+    } else {
+      report = {};
+    }
   }
 
   if (typeof report === "string") {
@@ -384,13 +390,15 @@ const AIReviewReportPage = () => {
   const lang = metadata?.language || metadata?.stack || metadata?.language_detected || null;
 
   const handleRetry = async () => {
-    if (!repoUrl || !review?.pr_number) return;
+    if (!reviewId) return;
     try {
       setRetrying(true);
-      await reviewService.createReview({ repo_url: repoUrl, pr_number: review.pr_number });
+      await reviewService.retryReview(reviewId);
       await fetchReview();
     } catch (err) {
       console.error('[AIReviewReportPage] retry failed:', err);
+      const errMsg = err?.response?.data?.error || err.message || 'Retry failed';
+      toast.error(errMsg);
     } finally {
       setRetrying(false);
     }
@@ -469,7 +477,7 @@ const AIReviewReportPage = () => {
             <div className="space-y-1">
               <h1 className="text-xl font-bold text-text-primary leading-snug">
                 <span className="font-mono text-text-secondary">
-                  {repo?.full_name || repo?.name || 'Unknown Repo'}
+                  {repoName}
                 </span>
                 <span className="text-text-muted mx-2">·</span>
                 PR #{review.pr_number}

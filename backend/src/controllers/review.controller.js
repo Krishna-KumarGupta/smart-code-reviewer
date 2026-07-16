@@ -98,7 +98,8 @@ export class ReviewController {
         base_sha: metadata.base.sha,
         sender: metadata.user?.login || 'unknown',
         event_type: 'manual',
-        delivery_id: `manual-${repoRow.github_repo_id}-${prNumber}`,
+        github_token: token,
+        delivery_id: `manual-${repoRow.github_repo_id}-${prNumber}-${Date.now()}`,
         timestamp: new Date().toISOString(),
       };
 
@@ -119,6 +120,133 @@ export class ReviewController {
 
     } catch (error) {
       console.error('[Review Controller Error] triggerReview failed:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Retries an existing review.
+   * Finds the review, looks up the repository, resets the status, and dispatches a new Celery task.
+   *
+   * POST /api/reviews/:reviewId/retry
+   */
+  static async retryReview(req, res, next) {
+    try {
+      const { reviewId } = req.params;
+      const userId = req.user.id;
+
+      // 1. Fetch existing review
+      const { data: review, error: reviewError } = await supabaseAdmin
+        .from('reviews')
+        .select('*')
+        .eq('id', reviewId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (reviewError || !review) {
+        return sendError(res, 'Review not found or access denied', 404);
+      }
+
+      // 2. Parse owner and repo from repo_url
+      // Example: https://github.com/owner/repo
+      const parts = review.repo_url.replace(/\/$/, '').split('/');
+      const repo = parts.pop();
+      const owner = parts.pop();
+
+      // 3. Find repository to get installation details
+      const fullName = `${owner}/${repo}`;
+      let { data: repoRow, error: repoError } = await supabaseAdmin
+        .from('repositories')
+        .select('*')
+        .ilike('full_name', fullName)
+        .maybeSingle();
+
+      // If not found, try a fallback: maybe the PR is on an upstream repo but they installed the app on their fork.
+      if (!repoRow) {
+        const { data: fallbackRepo } = await supabaseAdmin
+          .from('repositories')
+          .select('*')
+          .eq('user_id', userId)
+          .ilike('full_name', `%/${repo}`)
+          .limit(1)
+          .maybeSingle();
+          
+        if (fallbackRepo) {
+          repoRow = fallbackRepo;
+          repoError = null;
+        }
+      }
+
+      if (repoError || !repoRow) {
+        return sendError(res, `Repository not found for: ${fullName} (or fork)`, 404);
+      }
+
+      if (!repoRow.is_active) {
+        return sendError(res, 'Repository is disabled', 400);
+      }
+
+      // 4. Fetch PR details to verify and get SHAs
+      const token = await getValidAccessToken(userId);
+      const metadata = await getPullRequestMetadata(owner, repo, review.pr_number, token);
+
+      if (!metadata) {
+        return sendError(res, 'Pull request not found on GitHub', 404);
+      }
+
+      // 5. Update review status back to pending
+      const { error: updateError } = await supabaseAdmin
+        .from('reviews')
+        .update({
+          status: 'pending',
+          error: null,
+          report_json: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', reviewId);
+
+      if (updateError) {
+        console.error('[Review Controller] Failed to update review status for retry:', updateError);
+        return sendError(res, 'Failed to update review record', 500);
+      }
+
+      // 6. Build the Celery job payload
+      const jobPayload = {
+        reviewId,
+        userId,
+        userEmail: review.user_email,
+        repositoryId: repoRow.id,
+        installation_id: repoRow.installation_id || null,
+        repository_id: repoRow.github_repo_id,
+        owner,
+        repo,
+        repository_full_name: repoRow.full_name,
+        pullNumber: review.pr_number,
+        pull_number: review.pr_number,
+        pull_request_id: metadata.id,
+        pull_request_url: metadata.html_url,
+        head_sha: metadata.head.sha,
+        base_sha: metadata.base.sha,
+        sender: metadata.user?.login || 'unknown',
+        event_type: 'manual_retry',
+        github_token: token,
+        delivery_id: `retry-${repoRow.github_repo_id}-${review.pr_number}-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+      };
+
+      // 7. Dispatch Celery task
+      const taskResult = analyzePrTask.delay(jobPayload);
+
+      console.log(`[Review Controller] Retry Celery task dispatched. reviewId: ${reviewId}, taskId: ${taskResult.taskId}`);
+
+      return sendSuccess(res, {
+        message: 'AI Review workflow successfully enqueued for retry',
+        reviewId,
+        taskId: taskResult.taskId,
+        status: 'pending',
+      }, 202);
+
+    } catch (error) {
+      console.error('[Review Controller Error] retryReview failed:', error);
       next(error);
     }
   }

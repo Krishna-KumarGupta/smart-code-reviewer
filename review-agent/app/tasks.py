@@ -51,6 +51,7 @@ def run_review_pipeline(
     head_sha: str,
     user_id: str,
     user_email: str,
+    github_token: str | None = None,
 ) -> dict:
     """
     Full review pipeline for a single PR.
@@ -60,7 +61,7 @@ def run_review_pipeline(
     """
     return asyncio.run(
         _run_async(self, review_id, repo_url, pr_number, clone_url,
-                   base_sha, head_sha, user_id, user_email)
+                   base_sha, head_sha, user_id, user_email, github_token)
     )
 
 
@@ -74,6 +75,7 @@ async def _run_async(
     head_sha: str,
     user_id: str,
     user_email: str,
+    github_token: str | None = None,
 ) -> dict:
     """Async implementation of the pipeline (called via asyncio.run)."""
     from app.db.session import get_session, init_db
@@ -106,7 +108,7 @@ async def _run_async(
 
     try:
         # ── Pre-check: docs/asset only? ───────────────────────────────────────
-        async with GitHubClient() as gh:
+        async with GitHubClient(token=github_token) as gh:
             pr_files = await gh.get_pr_files(
                 *_parse_owner_repo(repo_url), pr_number
             )

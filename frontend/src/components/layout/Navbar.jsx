@@ -37,7 +37,7 @@ const Navbar = ({ onMenuToggle }) => {
     : [
         { path: '/home',    label: 'Dashboard', icon: <RiHomeLine /> },
         { path: '/history', label: 'History',   icon: <RiHistoryLine /> },
-        { path: '/repos',   label: 'Repos',     icon: <RiGithubLine />, disabled: true },
+        { path: '/repos',   label: 'Repos',     icon: <RiGithubLine /> },
       ];
 
   return (

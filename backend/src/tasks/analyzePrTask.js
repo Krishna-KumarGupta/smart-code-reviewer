@@ -70,6 +70,7 @@ export async function analyzePrHandler(payload) {
         repo_url: repoUrl,
         pr_number: prNumber,
         review_id: reviewId,
+        github_token: payload.github_token || null,
       }),
     });
 
@@ -119,9 +120,9 @@ export async function analyzePrHandler(payload) {
 
         // Map agent status to our Supabase status vocabulary
         let localStatus = 'pending';
-        if (agentStatus === 'running')    localStatus = 'processing';
+        if (agentStatus === 'running') localStatus = 'processing';
         else if (agentStatus === 'completed') localStatus = 'completed';
-        else if (agentStatus === 'failed')    localStatus = 'failed';
+        else if (agentStatus === 'failed') localStatus = 'failed';
 
         // Update the exact Supabase row that was pre-created by the controller
         await PersistenceService.updateReviewStatus(
