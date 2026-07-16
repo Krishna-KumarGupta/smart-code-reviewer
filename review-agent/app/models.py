@@ -118,6 +118,7 @@ class LLMFinding(BaseModel):
 class TriggerReviewRequest(BaseModel):
     repo_url: str = Field(..., description="HTTPS clone URL of the repository")
     pr_number: int = Field(..., gt=0, description="Pull request number")
+    review_id: str | None = Field(None, description="Optional pre-created review ID")
 
 
 class TriggerReviewResponse(BaseModel):

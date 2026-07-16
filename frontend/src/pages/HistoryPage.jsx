@@ -228,69 +228,9 @@ const HistoryPage = () => {
           </motion.div>
         ) : (
           <div className="space-y-4">
-            {reviews.map((review) => {
-              const repoLabel = review.repositories
-                ? `${review.repositories.owner}/${review.repositories.name}`
-                : 'Repository';
-                
-              const statusColors = {
-                pending: 'bg-warning/10 text-warning border-warning/20',
-                processing: 'bg-primary/10 text-primary border-primary/20',
-                completed: 'bg-success/10 text-success border-success/20',
-                failed: 'bg-red-500/10 text-red-500 border-red-500/20',
-              };
-
-              const statusLabels = {
-                pending: '🟡 Queued',
-                processing: '⚙️ AI Reviewing',
-                completed: '✅ Completed',
-                failed: '❌ Failed',
-              };
-
-              return (
-                <motion.div
-                  key={review.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="glass-card p-5"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary text-xl shrink-0">
-                        <RiCodeSSlashLine />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-text-primary">
-                          {review.pr_title || `Review PR #${review.pr_number}`}
-                        </h4>
-                        <p className="text-xs text-text-muted mt-1 flex flex-wrap items-center gap-2">
-                          <span className="font-medium text-text-primary">{repoLabel}</span>
-                          <span>•</span>
-                          <a
-                            href={review.pr_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="hover:underline text-primary"
-                          >
-                            PR #{review.pr_number}
-                          </a>
-                          <span>•</span>
-                          <span>{new Date(review.created_at).toLocaleString()}</span>
-                        </p>
-                      </div>
-                    </div>
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border shrink-0 ${statusColors[review.status] || 'bg-surface-2 text-text-muted border-border'}`}>
-                      {statusLabels[review.status] || review.status}
-                    </span>
-                  </div>
-                  {review.status === 'failed' && review.error_message && (
-                    <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-500">
-                      Error: {review.error_message}
-                    </div>
-                  )}
-                </motion.div>
-              );
-            })}
+            {reviews.map((review, index) => (
+              <ReviewRow key={review.id} review={review} index={index} />
+            ))}
           </div>
         )}
       </main>

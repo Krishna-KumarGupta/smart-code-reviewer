@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { RiGithubLine, RiRefreshLine, RiCheckLine, RiToggleLine, RiLoader4Line, RiSortAsc, RiTimeLine } from 'react-icons/ri';
@@ -9,6 +10,7 @@ import useAuth from '../../hooks/useAuth.js';
 
 const RepositoryList = ({ className = '' }) => {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [repositories, setRepositories] = useState([]);
   const [selectedRepoId, setSelectedRepoId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -152,20 +154,20 @@ const RepositoryList = ({ className = '' }) => {
    */
   const handleTriggerReview = async (pr) => {
     if (triggeringPrs[pr.id]) return;
-    
+
     setModalPrNumber(pr.number);
-    setModalStep(1); // 1: Fetching PR diff
+    setModalStep(1);
     setShowLoadingModal(true);
 
     const toastId = `trigger-${pr.id}`;
     setTriggeringPrs(prev => ({ ...prev, [pr.id]: true }));
     try {
-      // Step simulation for visual progression
+      // Animate the checklist steps while the API call is in-flight
       const t1 = setTimeout(() => setModalStep(2), 650);
       const t2 = setTimeout(() => setModalStep(3), 1300);
 
       toast.loading(`Triggering analysis for PR #${pr.number}...`, { id: toastId });
-      const result = await reviewService.triggerReview(
+      const response = await reviewService.triggerReview(
         activeRepoForPRs.owner,
         activeRepoForPRs.name,
         pr.number,
@@ -175,18 +177,24 @@ const RepositoryList = ({ className = '' }) => {
 
       clearTimeout(t1);
       clearTimeout(t2);
-      setModalStep(4); // 4: Success!
+      setModalStep(4); // Success!
+
+      // Extract the reviewId from the backend 202 response.
+      // sendSuccess wraps data as { success: true, data: { reviewId, ... } }
+      const reviewId = response?.data?.reviewId;
 
       setTimeout(() => {
         setShowLoadingModal(false);
-        toast.success(
-          'Review request queued successfully.', 
-          { id: toastId }
-        );
+        toast.success('Review request queued successfully.', { id: toastId });
+
+        // Navigate immediately to the report page so the user can watch progress.
+        // AIReviewReportPage will poll GET /api/reviews/:reviewId every 4s.
+        if (reviewId) {
+          navigate(`/history/report?reviewId=${reviewId}`);
+        }
       }, 950);
 
       window.dispatchEvent(new Event('reviewTriggered'));
-      await fetchReviews();
     } catch (error) {
       console.error('Failed to trigger review:', error);
       setShowLoadingModal(false);
