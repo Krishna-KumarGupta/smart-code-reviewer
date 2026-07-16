@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   RiArrowLeftLine,
@@ -255,9 +255,10 @@ const FindingCard = ({ bug, index, repoUrl, headSha }) => {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const AIReviewReportPage = () => {
+  const { reviewId: routeReviewId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate       = useNavigate();
-  const reviewId       = searchParams.get('reviewId');
+  const reviewId       = routeReviewId || searchParams.get('reviewId');
 
   const [review,   setReview]   = useState(null);
   const [loading,  setLoading]  = useState(true);
@@ -272,10 +273,11 @@ const AIReviewReportPage = () => {
   const fetchReview = useCallback(async () => {
     if (!reviewId) return;
     try {
-      const { review: data } = await reviewService.getReview(reviewId);
-      setReview(data);
+      const response = await reviewService.getReview(reviewId);
+      const review = response.data;
+      setReview(review);
       setError(null);
-      if (data.status === 'completed' || data.status === 'failed') {
+      if (review.status === 'completed' || review.status === 'failed') {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
@@ -310,16 +312,41 @@ const AIReviewReportPage = () => {
   useEffect(() => { setShown(PAGE_SIZE); }, [srcFilter]);
 
   // ── Derived data ──────────────────────────────────────────────────────────
-  const result       = review?.result || null;
   const repo         = review?.repositories;
-  const repoUrl      = repo ? `https://github.com/${repo.full_name}` : null;
-  const headSha      = result?.metadata?.head_sha || result?.metadata?.headSha || null;
+  const repoUrl      = review?.repo_url || (repo ? `https://github.com/${repo.full_name}` : null);
 
-  const allBugs      = result?.bugs || result?.findings || [];
-  const improvements = result?.improvements || [];
-  const summary      = result?.summary || null;
-  const metadata     = result?.metadata || {};
-  const score        = result?.score ?? result?.metadata?.score ?? null;
+  const isReportNull = review?.report_json === null || review?.report_json === undefined;
+
+  // Parsing and normalizing report_json defensively
+  let report = review?.report_json;
+
+  if (report === null || report === undefined) {
+    report = {};
+  }
+
+  if (typeof report === "string") {
+    try {
+      report = JSON.parse(report);
+    } catch {
+      report = {};
+    }
+  }
+
+  const bugs = Array.isArray(report.bugs) ? report.bugs : [];
+  const improvements = Array.isArray(report.improvements) ? report.improvements : [];
+  const score = report.score ?? null;
+  const narrative = report.review || report.summary || "";
+
+  // Temporary development logging
+  console.log("[AI Report] reviewId:", reviewId);
+  console.log("[AI Report] API response:", review);
+  console.log("[AI Report] report_json:", review?.report_json);
+
+  const result       = report; // to keep result fallback variables working if referenced elsewhere
+  const allBugs      = bugs;
+  const summary      = narrative;
+  const metadata     = report.metadata || {};
+  const headSha      = metadata.head_sha || metadata.headSha || report.head_sha || report.headSha || null;
   const tier         = scoreTier(score);
 
   const sevCounts = useMemo(() => {
@@ -694,8 +721,17 @@ const AIReviewReportPage = () => {
               </motion.div>
             )}
 
+            {/* AI report is not available yet */}
+            {!isFailed && !isActive && isReportNull && (
+              <div className="glass-card py-14 px-8 text-center">
+                <RiErrorWarningLine className="text-4xl text-yellow-500 mx-auto mb-3" />
+                <h3 className="text-base font-semibold text-text-primary mb-1">AI report is not available yet.</h3>
+                <p className="text-sm text-text-muted">This review is either pending execution or the report payload is empty.</p>
+              </div>
+            )}
+
             {/* Clean bill of health */}
-            {!isFailed && !isActive && totalBugs === 0 && result && (
+            {!isFailed && !isActive && totalBugs === 0 && !isReportNull && (
               <div className="glass-card py-14 px-8 text-center">
                 <RiShieldCheckLine className="text-4xl text-green-400 mx-auto mb-3" />
                 <h3 className="text-base font-semibold text-text-primary mb-1">No issues found</h3>

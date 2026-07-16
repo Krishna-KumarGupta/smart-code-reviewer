@@ -27,7 +27,7 @@ const reviewService = {
    */
   getReview: async (reviewId) => {
     const response = await api.get(`/api/reviews/${reviewId}`);
-    return response.data.data;
+    return response.data;
   },
 
   /**

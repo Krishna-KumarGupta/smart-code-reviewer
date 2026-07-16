@@ -27,16 +27,7 @@ export const listReviews = async (req, res, next) => {
 
     const { data, error } = await supabaseAdmin
       .from('reviews')
-      .select(`
-        id,
-        pr_number,
-        pr_title,
-        pr_url,
-        status,
-        created_at,
-        updated_at,
-        repositories ( id, name, full_name, owner )
-      `)
+      .select('id, pr_number, status, created_at, updated_at, repo_url')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -46,7 +37,38 @@ export const listReviews = async (req, res, next) => {
       return res.status(500).json({ success: false, error: 'Failed to fetch reviews' });
     }
 
-    return res.status(200).json({ success: true, data: { reviews: data || [] } });
+    // Map repositories in-memory
+    const { data: repos } = await supabaseAdmin
+      .from('repositories')
+      .select('id, name, full_name, owner')
+      .eq('user_id', userId);
+
+    const reposMap = {};
+    if (repos) {
+      repos.forEach(r => {
+        if (r.full_name) {
+          reposMap[r.full_name.toLowerCase()] = r;
+        }
+      });
+    }
+
+    const reviewsWithRepos = (data || []).map(r => {
+      let matchedRepo = null;
+      if (r.repo_url) {
+        const parts = r.repo_url.replace(/\/$/, '').split('/');
+        if (parts.length >= 2) {
+          const fullName = `${parts[parts.length - 2]}/${parts[parts.length - 1]}`.toLowerCase();
+          matchedRepo = reposMap[fullName];
+        }
+      }
+      return {
+        ...r,
+        pr_url: r.repo_url && r.pr_number ? `${r.repo_url}/pull/${r.pr_number}` : null,
+        repositories: matchedRepo
+      };
+    });
+
+    return res.status(200).json({ success: true, data: { reviews: reviewsWithRepos } });
   } catch (err) {
     next(err);
   }
@@ -69,17 +91,7 @@ export const getReview = async (req, res, next) => {
 
     const { data, error } = await supabaseAdmin
       .from('reviews')
-      .select(`
-        id,
-        pr_number,
-        pr_title,
-        pr_url,
-        status,
-        result,
-        created_at,
-        updated_at,
-        repositories ( id, name, full_name, owner, default_branch )
-      `)
+      .select('id, pr_number, status, report_json, created_at, updated_at, repo_url')
       .eq('id', reviewId)
       .eq('user_id', userId)
       .maybeSingle();
@@ -93,7 +105,30 @@ export const getReview = async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Review not found' });
     }
 
-    return res.status(200).json({ success: true, data: { review: data } });
+    // Query matched repository
+    let matchedRepo = null;
+    if (data.repo_url) {
+      const parts = data.repo_url.replace(/\/$/, '').split('/');
+      if (parts.length >= 2) {
+        const fullName = `${parts[parts.length - 2]}/${parts[parts.length - 1]}`.toLowerCase();
+        const { data: repos } = await supabaseAdmin
+          .from('repositories')
+          .select('id, name, full_name, owner, default_branch')
+          .eq('user_id', userId);
+        
+        if (repos) {
+          matchedRepo = repos.find(r => r.full_name && r.full_name.toLowerCase() === fullName) || null;
+        }
+      }
+    }
+
+    const reviewData = {
+      ...data,
+      pr_url: data.repo_url && data.pr_number ? `${data.repo_url}/pull/${data.pr_number}` : null,
+      repositories: matchedRepo
+    };
+
+    return res.status(200).json({ success: true, data: reviewData });
   } catch (err) {
     next(err);
   }
