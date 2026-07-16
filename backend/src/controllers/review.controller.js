@@ -5,6 +5,16 @@ import { getPullRequestMetadata } from '../github/client.js';
 import { getValidAccessToken } from '../github/services/githubTokenService.js';
 import { REVIEW_AGENT_URL, makeReviewAgentHeaders } from '../utils/reviewAgent.js';
 
+// Parses "https://github.com/owner/repo" into { name, owner, full_name }.
+// Used to build the `repositories` object the frontend reads for display
+// (repo name/owner badges on History and Detail pages).
+function parseOwnerRepo(repoUrl) {
+  const parts = repoUrl.replace(/\/$/, '').replace(/\.git$/, '').split('/');
+  const name = parts[parts.length - 1] || 'Unknown';
+  const owner = parts[parts.length - 2] || 'Unknown';
+  return { name, owner, full_name: `${owner}/${name}` };
+}
+
 export class ReviewController {
   /**
    * Triggers the PR Code Review orchestration workflow.
@@ -12,9 +22,9 @@ export class ReviewController {
    * Flow:
    *  1. Validate inputs & fetch repo from Supabase
    *  2. Verify the PR exists on GitHub
-   *  3. Create a `reviews` row in Supabase (synchronously) — this is the reviewId
-   *  4. Dispatch a Celery task that carries the reviewId
-   *  5. Return 202 with reviewId so the frontend can navigate immediately
+   *  3. Call review-agent's POST /reviews (review-agent owns the reviews table
+   *     and generates the reviewId itself)
+   *  4. Return 202 with reviewId so the frontend can navigate immediately
    *
    * POST /api/reviews/trigger
    */
@@ -53,6 +63,7 @@ export class ReviewController {
       const prNumber = metadata.number;
       const repoUrl = `https://github.com/${owner}/${repo}`;
       console.log(`[Review Controller] Calling review-agent to trigger manual review for ${repoUrl} PR#${prNumber}`);
+
       let agentResponse;
       try {
         agentResponse = await fetch(`${REVIEW_AGENT_URL}/reviews`, {
@@ -95,7 +106,8 @@ export class ReviewController {
    * Only the review's owner can access it.
    *
    * Returns the complete review object:
-   *   id, repo_url, pr_number, status, report_json, error, created_at, updated_at, pr_url
+   *   id, repo_url, pr_number, status, report_json, error, created_at, updated_at,
+   *   pr_url, repositories: { name, owner, full_name }
    *
    * GET /api/reviews/:reviewId
    */
@@ -138,6 +150,9 @@ export class ReviewController {
         }
       }
 
+      // Build the repositories object the frontend reads for the repo name/owner badge.
+      const { name, owner, full_name } = parseOwnerRepo(data.repo_url);
+
       return sendSuccess(res, {
         id: data.id,
         repo_url: data.repo_url,
@@ -150,6 +165,7 @@ export class ReviewController {
         pr_url: data.repo_url && data.pr_number
           ? `${data.repo_url}/pull/${data.pr_number}`
           : null,
+        repositories: { name, owner, full_name },
       });
     } catch (err) {
       next(err);
@@ -163,7 +179,17 @@ export class ReviewController {
   static async getUserReviews(req, res, next) {
     try {
       const reviews = await PersistenceService.getUserReviews(req.user.id);
-      return sendSuccess(res, { reviews });
+
+      // Ensure every review has a `repositories` object for the History page badge,
+      // in case PersistenceService doesn't already attach one.
+      const reviewsWithRepos = (reviews || []).map((r) => {
+        if (r.repositories) return r; // already populated, don't override
+        if (!r.repo_url) return r;
+        const { name, owner, full_name } = parseOwnerRepo(r.repo_url);
+        return { ...r, repositories: { name, owner, full_name } };
+      });
+
+      return sendSuccess(res, { reviews: reviewsWithRepos });
     } catch (error) {
       next(error);
     }
