@@ -80,12 +80,29 @@ export const AuthProvider = ({ children }) => {
 
         if (mounted && session?.user) {
           setUser(session.user);
-          const profileData = await fetchProfile(session.user.id);
-          if (mounted) setProfile(profileData);
+
+          // Fetch profile and GitHub status in parallel — both must complete
+          // before we drop the loading screen. This prevents the UI from
+          // briefly flashing "Not connected" when the user IS connected.
+          const [profileData, ghStatus] = await Promise.all([
+            fetchProfile(session.user.id),
+            githubService.status().catch(() => null), // non-fatal
+          ]);
+
+          if (mounted) {
+            setProfile(profileData);
+            if (ghStatus) {
+              setGithubConnected(ghStatus.connected);
+              setGithubUsername(ghStatus.username);
+              setGithubAvatar(ghStatus.avatar);
+            }
+          }
         }
       } catch (err) {
         console.error('[AuthContext] Session restore error:', err.message);
       } finally {
+        // Drop loading screen only after ALL state (including GitHub status)
+        // has been populated. This is the single source of truth for loading.
         if (mounted) setLoading(false);
       }
     };
@@ -93,24 +110,38 @@ export const AuthProvider = ({ children }) => {
     initSession();
 
     // ─── Listen for Auth State Changes ────────────────────────────────────
+    // This listener handles events that happen AFTER the initial session
+    // restore: SIGNED_IN (new login), SIGNED_OUT, TOKEN_REFRESHED, etc.
+    // INITIAL_SESSION is intentionally NOT handled here — initSession()
+    // above already fetches user, profile, and GitHub status for that case,
+    // and calling setLoading(false) from inside an async Supabase callback
+    // (which Supabase does not await) is unreliable.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
+
+        // Skip INITIAL_SESSION — already handled by initSession() above.
+        // Processing it here would create a duplicate network request race.
+        if (event === 'INITIAL_SESSION') return;
 
         if (session?.user) {
           setUser(session.user);
           const profileData = await fetchProfile(session.user.id);
           if (mounted) setProfile(profileData);
-          // Sync GitHub status whenever auth state changes
-          try {
-            const ghStatus = await githubService.status();
-            if (mounted) {
-              setGithubConnected(ghStatus.connected);
-              setGithubUsername(ghStatus.username);
-              setGithubAvatar(ghStatus.avatar);
+
+          // On a fresh SIGNED_IN event, fetch GitHub status so the UI
+          // reflects the correct connected state without a page refresh.
+          if (event === 'SIGNED_IN') {
+            try {
+              const ghStatus = await githubService.status();
+              if (mounted) {
+                setGithubConnected(ghStatus.connected);
+                setGithubUsername(ghStatus.username);
+                setGithubAvatar(ghStatus.avatar);
+              }
+            } catch {
+              // Non-fatal — user simply hasn't connected GitHub yet
             }
-          } catch {
-            // Non-fatal — user simply hasn't connected GitHub yet
           }
         } else {
           setUser(null);
@@ -118,10 +149,6 @@ export const AuthProvider = ({ children }) => {
           setGithubConnected(false);
           setGithubUsername(null);
           setGithubAvatar(null);
-        }
-
-        if (event === 'INITIAL_SESSION') {
-          setLoading(false);
         }
       }
     );
@@ -131,6 +158,7 @@ export const AuthProvider = ({ children }) => {
       subscription.unsubscribe();
     };
   }, [fetchProfile]);
+
 
   // ─── Login ────────────────────────────────────────────────────────────────
   const login = async (email, password) => {

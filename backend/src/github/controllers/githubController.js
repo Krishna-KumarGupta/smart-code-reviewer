@@ -28,6 +28,8 @@ import { syncUserRepositories }                   from '../services/githubReposi
 import { getUserSyncedRepositories }              from '../services/githubSyncedRepositoryService.js';
 import { createRepositoryWebhook }               from '../services/githubWebhookCreationService.js';
 import { sendSuccess, sendError }                from '../../utils/response.js';
+import { supabaseAdmin }                         from '../../config/supabase.js';
+
 
 // ─── GET /api/github/connect ──────────────────────────────────────────────────
 
@@ -46,11 +48,29 @@ export const connectWithGitHub = (req, res) => {
   try {
     const state = createSignedState(req.user.id);
 
+    // ── Log the initiating user before redirecting ──────────────────────
+    console.info('[githubController] connectWithGitHub: OAuth flow initiated', {
+      supabaseUserId: req.user.id,
+    });
+
     const params = new URLSearchParams({
       client_id:    githubConfig.clientId,
       redirect_uri: githubConfig.callbackUrl,
       scope:        githubConfig.scopes,
       state,
+      // ── Force GitHub account selection on every OAuth attempt ──────────
+      // GitHub silently reuses the browser's active GitHub session by default.
+      // This causes "wrong account" bugs when multiple Supabase users share
+      // a browser (e.g. QA, staging, or multi-account scenarios): user B
+      // clicks "Connect GitHub" and gets redirected as user A's GitHub account
+      // because that is still logged in the browser.
+      //
+      // prompt=select_account is the GitHub-documented parameter that forces
+      // the account chooser / login screen on every authorization attempt,
+      // regardless of any existing GitHub browser session.
+      //
+      // Reference: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps
+      prompt: 'select_account',
     });
 
     const url = `${githubConfig.authorizeUrl}?${params.toString()}`;
@@ -142,6 +162,15 @@ export const handleGitHubCallback = async (req, res, next) => {
 
     const githubUser = await userResponse.json();
 
+    // ── Diagnostic: log state-verified user vs returned GitHub identity ───
+    // This makes cross-user OAuth bugs immediately visible in server logs.
+    // Never logs tokens, JWTs, secrets, OAuth codes, or Authorization headers.
+    console.info('[githubController] handleGitHubCallback: identity check', {
+      initiatingSupabaseUserId: userId,          // from HMAC-verified state
+      returnedGitHubUserId:     githubUser.id,   // numeric GitHub account ID
+      returnedGitHubUsername:   githubUser.login, // human-readable GitHub login
+    });
+
     // ── Verify that the newly issued token includes the repo scope needed for
     // private repositories. GitHub exposes granted scopes via response headers.
     const grantedScopesHeader = userResponse.headers.get('x-oauth-scopes');
@@ -184,7 +213,39 @@ export const handleGitHubCallback = async (req, res, next) => {
  */
 export const getGitHubStatus = async (req, res, next) => {
   try {
-    const account = await getGitHubAccount(req.user.id);
+    const supabaseUserId = req.user.id;
+
+    // ── DIAGNOSTIC: scan all github_accounts rows ─────────────────────────
+    // Temporary — lets us see exactly what user_ids are stored vs what the
+    // JWT is presenting, to identify any format mismatch causing the miss.
+    // Never logs tokens, JWTs, secrets, or Authorization headers.
+    const { data: allRows, error: scanError } = await supabaseAdmin
+      .from('github_accounts')
+      .select('id, user_id, github_user_id, github_username');
+
+    console.info('[GitHub Status Debug] Authenticated userId from JWT:', supabaseUserId);
+    console.info('[GitHub Status Debug] All github_accounts rows:', JSON.stringify(
+      (allRows || []).map(r => ({
+        id:              r.id,
+        user_id:         r.user_id,
+        github_user_id:  r.github_user_id,
+        github_username: r.github_username,
+        userIdMatch:     r.user_id === supabaseUserId,
+      })),
+      null, 2
+    ));
+    if (scanError) {
+      console.error('[GitHub Status Debug] Scan error:', scanError.message);
+    }
+
+    const account = await getGitHubAccount(supabaseUserId);
+
+    console.info('[GitHub Status Debug] getGitHubAccount result:', {
+      authenticatedUserId: supabaseUserId,
+      accountFound:        Boolean(account),
+      githubUserId:        account?.github_user_id ?? null,
+      username:            account?.github_username ?? null,
+    });
 
     if (!account) {
       return sendSuccess(res, { connected: false, username: null, avatar: null });
@@ -199,6 +260,7 @@ export const getGitHubStatus = async (req, res, next) => {
     next(err);
   }
 };
+
 
 // ─── POST /api/github/disconnect ─────────────────────────────────────────────
 
