@@ -196,10 +196,24 @@ async def trigger_review(
 
     Returns a review_id that can be polled via GET /reviews/{review_id}.
     """
-    review_id = body.review_id if body.review_id else str(uuid.uuid4())
+    if body.review_id:
+        try:
+            uuid.UUID(body.review_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"success": False, "error": "Invalid review_id format. Must be a valid UUID string.", "code": "INVALID_UUID_FORMAT"},
+            )
+        review_id = body.review_id
+    else:
+        review_id = str(uuid.uuid4())
 
     async with get_session() as session:
         review = await session.get(Review, review_id)
+        # Note: If a review_id already exists in the database, we overwrite and reuse the existing row
+        # instead of throwing a 409 Conflict. This is required because webhook automation workflows
+        # and retries/re-runs may reuse pre-generated Supabase review IDs, and updating/resetting the row
+        # status to 'queued' allows the workflow to be re-run safely and idempotently.
         if review:
             review.repo_url = body.repo_url
             review.pr_number = body.pr_number
