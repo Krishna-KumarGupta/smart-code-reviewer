@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     aws_ses_sender_email: str | None = None
     frontend_review_url_base: str = "http://localhost:5173/reviews"
 
+    # ── GitHub Comment Settings ───────────────────────────────────────────────
+    github_comment_enabled: bool = False
+    github_comment_max_inline: int = 15
+
     # ── Database ──────────────────────────────────────────────────────────────
     database_url: str = "sqlite+aiosqlite:///./review_agent.db"
 

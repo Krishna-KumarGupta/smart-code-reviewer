@@ -122,3 +122,17 @@ async def init_db() -> None:
             exc_str = str(exc).lower()
             if "already exists" not in exc_str and "duplicate column name" not in exc_str:
                 logger.error("Database migration error while adding email_error: %s", exc)
+
+        try:
+            await conn.execute(text("ALTER TABLE reviews ADD COLUMN github_comment_posted BOOLEAN NOT NULL DEFAULT FALSE"))
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            if "already exists" not in exc_str and "duplicate column name" not in exc_str:
+                logger.error("Database migration error while adding github_comment_posted: %s", exc)
+
+        try:
+            await conn.execute(text("ALTER TABLE reviews ADD COLUMN github_comment_error TEXT"))
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            if "already exists" not in exc_str and "duplicate column name" not in exc_str:
+                logger.error("Database migration error while adding github_comment_error: %s", exc)

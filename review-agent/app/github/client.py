@@ -73,3 +73,24 @@ class GitHubClient:
         response = await self._client.get(url)
         response.raise_for_status()
         return response.json()
+
+    async def post_pr_review(
+        self, owner: str, repo: str, pull_number: int, body: str, event: str, comments: list[dict] | None = None
+    ) -> dict:
+        """
+        POST /repos/{owner}/{repo}/pulls/{pull_number}/reviews
+
+        Creates a pull request review.
+        Raises httpx2.HTTPStatusError on non-2xx.
+        """
+        url = f"/repos/{owner}/{repo}/pulls/{pull_number}/reviews"
+        payload = {
+            "body": body,
+            "event": event,
+        }
+        if comments:
+            payload["comments"] = comments
+
+        response = await self._client.post(url, json=payload)
+        response.raise_for_status()
+        return response.json()

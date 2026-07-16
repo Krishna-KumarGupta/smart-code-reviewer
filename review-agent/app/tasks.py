@@ -118,7 +118,7 @@ async def _run_async(
             report = build_report([], [], [], [], [],
                                   "This PR contains only documentation or asset changes.",
                                   ["No code changes detected — nothing to review."])
-            await _persist_report(review_id, report)
+            await _persist_report(review_id, report, pr_files)
             return report.model_dump()
 
         # ── Clone repository ──────────────────────────────────────────────────
@@ -175,7 +175,7 @@ async def _run_async(
             improvements=improvements,
         )
 
-        await _persist_report(review_id, report)
+        await _persist_report(review_id, report, pr_files)
         return report.model_dump()
 
     except Exception as exc:
@@ -230,7 +230,7 @@ def _format_diff_context(pr_files: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-async def _persist_report(review_id: str, report) -> None:
+async def _persist_report(review_id: str, report, pr_files: list[dict] | None = None) -> None:
     from app.db.session import get_session
     from app.db.models import Review
 
@@ -241,6 +241,7 @@ async def _persist_report(review_id: str, report) -> None:
             review.report_json = report.model_dump_json()
 
     await _send_notification_safely(review_id)
+    await _post_github_comment_safely(review_id, pr_files)
 
 
 async def _send_notification_safely(review_id: str) -> None:
@@ -319,3 +320,67 @@ async def _send_notification_safely(review_id: str) -> None:
             logger.warning("[email] Failed to send email for review %s: %s", review_id, exc)
             review.email_sent = False
             review.email_error = str(exc)
+
+
+async def _post_github_comment_safely(review_id: str, pr_files: list[dict] | None = None) -> None:
+    """
+    Look up the review by ID, check if a GitHub PR review comment has been posted, and post it if not.
+    Catches any exception, updates the DB with github_comment_error on failure,
+    or marks github_comment_posted=True on success.
+    """
+    from app.config import get_settings
+    from app.db.session import get_session
+    from app.db.models import Review
+    from app.notify.github_comment import post_github_comment
+    import json
+
+    settings = get_settings()
+    if not settings.github_comment_enabled:
+        logger.debug("[github_comment] PR review comments are disabled via kill switch.")
+        return
+
+    async with get_session() as session:
+        review = await session.get(Review, review_id)
+        if not review:
+            logger.warning("[github_comment] Review %s not found for notification.", review_id)
+            return
+
+        if review.github_comment_posted:
+            logger.info("[github_comment] PR review comment already posted for review %s. Skipping.", review_id)
+            return
+
+        repo_url = review.repo_url
+        pr_number = review.pr_number
+        score = None
+        review_excerpt = ""
+        findings = []
+
+        if review.report_json:
+            try:
+                report_data = json.loads(review.report_json)
+                score = report_data.get("score")
+                review_excerpt = report_data.get("review", "")
+                findings = report_data.get("bugs", [])
+            except Exception as e:
+                logger.error("[github_comment] Failed to parse report_json: %s", e)
+
+        # Call notify client
+        try:
+            await post_github_comment(
+                review_id=review_id,
+                repo_url=repo_url,
+                pr_number=pr_number,
+                score=score if score is not None else 0,
+                review_narrative=review_excerpt,
+                findings=findings,
+                pr_files=pr_files,
+                settings=settings,
+            )
+            # Update database status on success
+            review.github_comment_posted = True
+            review.github_comment_error = None
+            logger.info("[github_comment] Successfully posted PR review comment for review %s", review_id)
+        except Exception as exc:
+            logger.warning("[github_comment] Failed to post PR review comment for review %s: %s", review_id, exc)
+            review.github_comment_posted = False
+            review.github_comment_error = str(exc)
