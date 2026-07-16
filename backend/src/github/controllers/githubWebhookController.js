@@ -113,11 +113,32 @@ export const handleWebhook = async (req, res, next) => {
 
     if (eventType === 'pull_request') {
       // ── pull_request: Delegate full processing to the service layer ───────
-      const result = await handlePullRequestEvent(payload);
-      return res.status(200).json({
-        success: true,
+      const deliveryId = req.headers['x-github-delivery'] || null;
+      const result = await handlePullRequestEvent(payload, deliveryId, eventType);
+      
+      let status = 200;
+      if (result.reason === 'repository_not_managed') {
+        status = 404;
+      } else if (result.reason === 'repository_disabled') {
+        status = 403;
+      } else if (result.reason === 'installation_missing') {
+        status = 400;
+      } else if (result.reason === 'invalid_payload') {
+        status = 400;
+      } else if (result.reason === 'duplicate_delivery') {
+        status = 200;
+      } else if (result.reason === 'unsupported_action') {
+        status = 200;
+      } else if (result.handled) {
+        status = 202;
+      }
+
+      return res.status(status).json({
+        success: result.handled || result.reason === 'duplicate_delivery' || result.reason === 'unsupported_action',
         handled: result.handled,
+        message: result.message || result.reason,
         ...(result.reason && { reason: result.reason }),
+        ...(result.reviewId && { reviewId: result.reviewId }),
       });
     }
 
@@ -130,6 +151,7 @@ export const handleWebhook = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       handled: false,
+      message: `Unsupported event: ${eventType}`,
       reason:  `unsupported_event:${eventType}`,
     });
 

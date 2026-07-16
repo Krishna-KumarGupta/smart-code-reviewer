@@ -1,29 +1,42 @@
 /**
  * Review Service — Frontend
  *
- * API calls for AI code review results.
- * Uses the centralized Axios `api` instance which auto-attaches the Supabase JWT.
+ * Calls backend endpoints for review triggers, history, and stats.
+ * Uses the centralized Axios `api` instance which auto-attaches JWT.
  */
 
 import api from './api.js';
 
 const reviewService = {
   /**
-   * List all reviews for the authenticated user (newest first).
-   * Does not include the full `result` blob.
-   *
-   * @returns {Promise<{ reviews: Array }>}
+   * Triggers a manual PR review
+   * POST /api/reviews/trigger
    */
-  listReviews: async () => {
+  triggerReview: async (owner, repo, pullNumber, userId, repositoryId) => {
+    const response = await api.post('/api/reviews/trigger', {
+      owner,
+      repo,
+      pullNumber,
+      userId,
+      repositoryId,
+    });
+    return response.data;
+  },
+
+  /**
+   * Get user's review history
+   * GET /api/reviews
+   */
+  getUserReviews: async () => {
     const response = await api.get('/api/reviews');
-    return response.data.data;
+    return response.data.data.reviews;
   },
 
   /**
    * Get a single review by ID, including the full AI `result` object.
    *
    * @param {string} reviewId - Supabase UUID of the review row
-   * @returns {Promise<{ review: object }>}
+   * @returns {Promise<object>}
    */
   getReview: async (reviewId) => {
     const response = await api.get(`/api/reviews/${reviewId}`);
@@ -39,6 +52,10 @@ const reviewService = {
   createReview: async ({ repo_url, pr_number }) => {
     const response = await api.post('/api/reviews', { repo_url, pr_number });
     return response.data.data;
+  },
+  getUserStats: async () => {
+    const response = await api.get('/api/reviews/stats');
+    return response.data.data.stats;
   },
 };
 

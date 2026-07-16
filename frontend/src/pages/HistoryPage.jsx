@@ -116,29 +116,48 @@ const ReviewRow = ({ review, index }) => {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 const HistoryPage = () => {
-  const [reviews,   setReviews]   = useState([]);
+  const [reviews, setReviews] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error,     setError]     = useState(null);
+  const [error, setError] = useState(null);
+
+  const fetchHistory = async (showLoader = true) => {
+    if (showLoader) setIsLoading(true);
+    try {
+      const data = await reviewService.getUserReviews();
+      setReviews(data || []);
+      setError(null);
+    } catch (e) {
+      console.error('[HistoryPage] Failed to fetch reviews:', e);
+      setError(e.response?.data?.error || e.message || 'Failed to load reviews');
+    } finally {
+      if (showLoader) setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        setIsLoading(true);
-        const { reviews: data } = await reviewService.listReviews();
-        setReviews(data || []);
-      } catch (err) {
-        setError(err?.response?.data?.error || 'Failed to load reviews');
-      } finally {
-        setIsLoading(false);
-      }
+    fetchHistory(true);
+
+    // Listen to review triggered events for auto refresh
+    const handleRefresh = () => fetchHistory(false);
+    window.addEventListener('reviewTriggered', handleRefresh);
+
+    return () => {
+      window.removeEventListener('reviewTriggered', handleRefresh);
     };
-    load();
   }, []);
+
+  // Dynamic Polling Effect: only poll when there are pending or processing reviews
+  useEffect(() => {
+    const hasActiveReviews = reviews.some(r => r.status === 'pending' || r.status === 'processing');
+    if (!hasActiveReviews) return;
+
+    const interval = setInterval(() => fetchHistory(false), 7000);
+    return () => clearInterval(interval);
+  }, [reviews]);
 
   return (
     <div className="min-h-full">
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
         {/* Page Header */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
@@ -157,7 +176,26 @@ const HistoryPage = () => {
           </p>
         </motion.div>
 
-        {/* Content */}
+        {/* Filter Bar (placeholder) */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, duration: 0.4 }}
+          className="glass-card p-4 mb-6 flex items-center gap-3 opacity-70"
+        >
+          <span className="text-sm text-text-muted">Filters:</span>
+          {['All Repos', 'This Week', 'High Severity'].map((filter) => (
+            <span
+              key={filter}
+              className="px-3 py-1 rounded-lg bg-surface-2 text-xs text-text-muted border border-border cursor-not-allowed"
+            >
+              {filter}
+            </span>
+          ))}
+          <span className="ml-auto text-xs text-text-muted">Filtered by active repositories</span>
+        </motion.div>
+
+        {/* Review List or Loading */}
         {isLoading ? (
           <div className="space-y-4">
             {[1, 2, 3].map((i) => <ReviewSkeleton key={i} />)}
@@ -185,14 +223,74 @@ const HistoryPage = () => {
             </p>
             <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-surface-2 border border-border-light text-sm text-text-muted">
               <RiGithubLine className="text-base" />
-              GitHub integration coming soon
+              Trigger a review on any repo to start
             </div>
           </motion.div>
         ) : (
-          <div className="space-y-3">
-            {reviews.map((review, i) => (
-              <ReviewRow key={review.id} review={review} index={i} />
-            ))}
+          <div className="space-y-4">
+            {reviews.map((review) => {
+              const repoLabel = review.repositories
+                ? `${review.repositories.owner}/${review.repositories.name}`
+                : 'Repository';
+                
+              const statusColors = {
+                pending: 'bg-warning/10 text-warning border-warning/20',
+                processing: 'bg-primary/10 text-primary border-primary/20',
+                completed: 'bg-success/10 text-success border-success/20',
+                failed: 'bg-red-500/10 text-red-500 border-red-500/20',
+              };
+
+              const statusLabels = {
+                pending: '🟡 Queued',
+                processing: '⚙️ AI Reviewing',
+                completed: '✅ Completed',
+                failed: '❌ Failed',
+              };
+
+              return (
+                <motion.div
+                  key={review.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="glass-card p-5"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    <div className="flex items-start gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary text-xl shrink-0">
+                        <RiCodeSSlashLine />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-text-primary">
+                          {review.pr_title || `Review PR #${review.pr_number}`}
+                        </h4>
+                        <p className="text-xs text-text-muted mt-1 flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-text-primary">{repoLabel}</span>
+                          <span>•</span>
+                          <a
+                            href={review.pr_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline text-primary"
+                          >
+                            PR #{review.pr_number}
+                          </a>
+                          <span>•</span>
+                          <span>{new Date(review.created_at).toLocaleString()}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border shrink-0 ${statusColors[review.status] || 'bg-surface-2 text-text-muted border-border'}`}>
+                      {statusLabels[review.status] || review.status}
+                    </span>
+                  </div>
+                  {review.status === 'failed' && review.error_message && (
+                    <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-500">
+                      Error: {review.error_message}
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </main>

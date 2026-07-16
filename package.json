@@ -1,0 +1,24 @@
+{
+  "name": "hackathon-project",
+  "version": "1.0.0",
+  "description": "An AI-powered GitHub Pull Request review platform that automatically analyzes code for quality, security, architecture, and performance using multiple AI agents.",
+  "homepage": "https://github.com/Krishna-KumarGupta/smart-code-reviewer#readme",
+  "bugs": {
+    "url": "https://github.com/Krishna-KumarGupta/smart-code-reviewer/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Krishna-KumarGupta/smart-code-reviewer.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "test.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@openrouter/sdk": "^0.13.50",
+    "openai": "^6.46.0"
+  }
+}
