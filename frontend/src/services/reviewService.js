@@ -3,6 +3,8 @@
  *
  * Calls backend endpoints for review triggers, history, and stats.
  * Uses the centralized Axios `api` instance which auto-attaches JWT.
+ * API calls for AI code review results.
+ * Uses the centralized Axios `api` instance which auto-attaches the Supabase JWT.
  */
 
 import api from './api.js';

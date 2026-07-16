@@ -160,36 +160,50 @@ const ConnectGitHubCard = () => {
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
   const [hasConnectedOnce, setHasConnectedOnce] = useState(false);
 
+  // ── Handle OAuth callback result query param ─────────────────────────────
+  // The backend redirects to /home?github=connected (or denied/error) after
+  // the OAuth flow. This effect reads that param, refreshes GitHub status,
+  // and clears the param from the URL so it isn't processed again on re-render.
+  //
+  // refreshGitHubStatus is in the deps array so we always call the version
+  // that has the current (non-stale) user reference captured in its closure.
+  // The effect still runs only once on mount because refreshGitHubStatus is
+  // stable (useCallback with [user] dep — user doesn't change mid-session).
   useEffect(() => {
     const githubParam = searchParams.get("github");
 
     if (!githubParam) return;
 
+    console.info('[ConnectGitHubCard] OAuth callback param received:', githubParam);
+
     if (githubParam === "connected") {
       setHasConnectedOnce(true);
-      refreshGitHubStatus().then(() => {
-        toast.success("🎉 GitHub account connected!", {
-          duration: 5000,
+      // Explicitly refresh status from backend — the source of truth.
+      // initSession() already fetched status on page load, but this ensures
+      // the freshest state is reflected immediately after OAuth return.
+      refreshGitHubStatus().then((status) => {
+        console.info('[ConnectGitHubCard] refreshGitHubStatus result:', {
+          connected: status?.connected,
+          username:  status?.username,
         });
+        toast.success("🎉 GitHub account connected!", { duration: 5000 });
+      }).catch((err) => {
+        console.error('[ConnectGitHubCard] refreshGitHubStatus failed:', err?.message);
       });
     } else if (githubParam === "denied") {
-      toast("GitHub connection cancelled", {
-        icon: "ℹ️",
-      });
+      toast("GitHub connection cancelled", { icon: "ℹ️" });
     } else if (githubParam === "error") {
       const reason = searchParams.get("reason") || "unknown";
-
-      toast.error(
-        `GitHub connection failed (${reason}). Please try again.`
-      );
+      toast.error(`GitHub connection failed (${reason}). Please try again.`);
     }
 
+    // Remove the param from the URL so it isn't re-processed on re-render
     setSearchParams((prev) => {
       prev.delete("github");
       prev.delete("reason");
       return prev;
     });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [refreshGitHubStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleConnect = async () => {
     setIsConnectModalOpen(false);
@@ -197,13 +211,14 @@ const ConnectGitHubCard = () => {
 
     try {
       await githubService.connect();
-      // Redirect happens automatically
+      // window.location.href redirect happens inside githubService.connect()
     } catch (err) {
+      console.error('[ConnectGitHubCard] Connect error:', err?.message);
+      console.error('[ConnectGitHubCard] Connect error response:', err?.response?.data);
       toast.error(
         err?.response?.data?.error ||
         "Failed to start GitHub connection"
       );
-
       setLoginLoading(false);
     }
   };

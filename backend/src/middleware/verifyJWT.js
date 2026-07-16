@@ -27,6 +27,8 @@ const verifyJWT = async (req, res, next) => {
       });
     }
     const token = authHeader.slice(7);
+    console.info('[verifyJWT] Bearer token received — verifying with Supabase');
+
 
     // Verify token via Supabase — validates signature and expiry
     const { data, error } = await supabaseAnon.auth.getUser(token);

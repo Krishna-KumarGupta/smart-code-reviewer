@@ -5,8 +5,8 @@ import { celeryClient, analyzePrHandler } from './tasks/analyzePrTask.js';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
-// Initialize worker instance pointing to Redis
-const worker = celery.createWorker(REDIS_URL, REDIS_URL);
+// Initialize worker instance pointing to Redis using a dedicated queue channel
+const worker = celery.createWorker(REDIS_URL, REDIS_URL, 'node-queue');
 
 // Register the analyzePr task handler
 worker.register('tasks.analyzePr', analyzePrHandler);
