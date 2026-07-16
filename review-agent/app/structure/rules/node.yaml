@@ -1,0 +1,38 @@
+# Layout rules for Node.js / JavaScript / TypeScript projects
+stack_name: node
+manifest_indicators:
+  - "package.json"
+
+rules:
+  - path: "README.md"
+    description: "Project must have a README.md at the root"
+    severity: warning
+    optional: true
+
+  - path: "package.json"
+    description: "Node project must have a package.json"
+    severity: error
+    optional: false
+
+  - path: ".gitignore"
+    description: "A .gitignore should be present"
+    severity: warning
+    optional: true
+
+  - path: "src/"
+    description: "Source code should live in src/"
+    severity: warning
+    optional: true
+
+forbidden:
+  - path: "node_modules/"
+    description: "node_modules should not be committed"
+    severity: error
+
+  - path: ".env"
+    description: ".env file should not be committed — use .env.example"
+    severity: error
+
+  - path: "*.log"
+    description: "Log files should not be committed"
+    severity: warning

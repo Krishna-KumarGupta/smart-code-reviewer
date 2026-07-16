@@ -1,0 +1,44 @@
+# Layout rules for Go projects
+stack_name: go
+manifest_indicators:
+  - "go.mod"
+
+rules:
+  - path: "README.md"
+    description: "Project should have a README.md"
+    severity: warning
+    optional: true
+
+  - path: "go.mod"
+    description: "Go project must have a go.mod"
+    severity: error
+    optional: false
+
+  - path: "go.sum"
+    description: "Go project should have a go.sum"
+    severity: warning
+    optional: true
+
+  - path: ".gitignore"
+    description: "A .gitignore should be present"
+    severity: warning
+    optional: true
+
+  - path: "cmd/"
+    description: "Main packages should live in cmd/"
+    severity: warning
+    optional: true
+
+  - path: "internal/"
+    description: "Private packages should use internal/ directory"
+    severity: warning
+    optional: true
+
+forbidden:
+  - path: "vendor/"
+    description: "vendor/ directory should be gitignored unless intentionally committed"
+    severity: warning
+
+  - path: ".env"
+    description: ".env file should not be committed — use .env.example"
+    severity: error

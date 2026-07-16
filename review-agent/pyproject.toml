@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "review-agent"
+version = "0.1.0"
+description = "Smart Code Reviewer — AI Code Review Microservice"
+requires-python = ">=3.12"
+dependencies = [
+    # Web framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+
+    # Configuration
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+
+    # HTTP client (GitHub API)
+    "httpx2>=0.28.0",
+
+    # Task queue
+    "celery[redis]>=5.4.0",
+    "redis>=5.2.0",
+
+    # AST / import parsing
+    "tree-sitter>=0.23.0",
+    "tree-sitter-language-pack>=0.6.0",
+
+    # Import-graph / cycle detection
+    "networkx>=3.4.0",
+
+    # LLM
+    "openai>=1.0.0",
+
+    # Database — async
+    "sqlalchemy>=2.0.0",
+    "asyncpg>=0.30.0",
+    "aiosqlite>=0.20.0",   # local dev fallback
+
+    # Token counting approximation
+    "tiktoken>=0.8.0",
+
+    # Utilities
+    "python-multipart>=0.0.12",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-mock>=3.14.0",
+    "httpx2",  # for TestClient
+    "ruff>=0.8.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

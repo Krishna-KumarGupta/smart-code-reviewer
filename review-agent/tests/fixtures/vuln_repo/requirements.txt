@@ -1,0 +1,4 @@
+# Known-vulnerable dependency fixture
+# CVE-2018-18074: requests <= 2.19.1 (SSRF / improper redirect)
+# OSV ID: GHSA-9wx4-h78v-vm56
+requests==2.19.1

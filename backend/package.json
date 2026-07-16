@@ -10,9 +10,11 @@
     "lint": "eslint src/ server.js"
   },
   "dependencies": {
+    "@octokit/rest": "^22.0.1",
     "@supabase/supabase-js": "^2.45.4",
+    "celery-node": "^0.5.9",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
+    "dotenv": "^16.6.1",
     "express": "^4.19.2",
     "helmet": "^7.1.0",
     "morgan": "^1.10.0"

@@ -2,15 +2,34 @@
  * HistoryPage — Review History
  *
  * Protected user page showing past AI code reviews.
- * Currently displays empty state — will be populated when
- * GitHub App integration is implemented.
+ * Fetches reviews from /api/reviews and links each to its full ReviewReportPage.
  */
 
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { RiHistoryLine, RiCodeSSlashLine, RiGithubLine } from 'react-icons/ri';
-import Card from '../components/ui/Card.jsx';
+import {
+  RiHistoryLine,
+  RiCodeSSlashLine,
+  RiGithubLine,
+  RiArrowRightLine,
+  RiLoader4Line,
+  RiCheckLine,
+  RiTimeLine,
+  RiErrorWarningLine,
+  RiSparklingLine,
+} from 'react-icons/ri';
+import reviewService from '../services/reviewService.js';
 
-// ─── Review Item Skeleton ─────────────────────────────────────────────────────
+// ─── Status config ────────────────────────────────────────────────────────────
+const STATUS_CONFIG = {
+  completed:  { label: 'Completed',  cls: 'bg-green-500/15  text-green-400',  icon: RiCheckLine        },
+  processing: { label: 'Processing', cls: 'bg-blue-500/15   text-blue-400',   icon: RiLoader4Line      },
+  pending:    { label: 'Pending',    cls: 'bg-yellow-500/15 text-yellow-400', icon: RiTimeLine         },
+  failed:     { label: 'Failed',     cls: 'bg-red-500/15    text-red-400',    icon: RiErrorWarningLine },
+};
+
+// ─── Skeleton ────────────────────────────────────────────────────────────────
 const ReviewSkeleton = () => (
   <div className="glass-card p-5 animate-pulse">
     <div className="flex items-start gap-4">
@@ -24,16 +43,121 @@ const ReviewSkeleton = () => (
   </div>
 );
 
+// ─── Review Row ───────────────────────────────────────────────────────────────
+const ReviewRow = ({ review, index }) => {
+  const statusCfg  = STATUS_CONFIG[review.status] || STATUS_CONFIG.pending;
+  const StatusIcon = statusCfg.icon;
+  const repo       = review.repositories;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05, duration: 0.35 }}
+    >
+      <div className="glass-card p-5 flex items-start gap-4 hover:border-primary/40 transition-colors group">
+        {/* Icon */}
+        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+          <RiCodeSSlashLine className="text-primary text-base" />
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-0.5">
+            {/* Repo name */}
+            <span className="text-xs text-text-muted font-mono flex items-center gap-1">
+              <RiGithubLine className="text-xs" />
+              {repo?.full_name || repo?.name || 'Unknown Repo'}
+            </span>
+            {/* Status badge */}
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${statusCfg.cls}`}>
+              <StatusIcon className={`text-xs ${review.status === 'processing' ? 'animate-spin' : ''}`} />
+              {statusCfg.label}
+            </span>
+          </div>
+
+          {/* PR title */}
+          <p className="text-sm font-semibold text-text-primary truncate">
+            PR #{review.pr_number}{review.pr_title ? ` · ${review.pr_title}` : ''}
+          </p>
+
+          {/* Timestamp */}
+          <p className="text-xs text-text-muted mt-0.5">
+            {new Date(review.created_at).toLocaleString()}
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* AI Report button — every review (page handles all statuses) */}
+          <Link
+            id={`view-ai-report-${review.id}`}
+            to={`/history/report?reviewId=${review.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-semibold hover:bg-primary hover:text-white transition-all duration-200 whitespace-nowrap"
+          >
+            <RiSparklingLine className="text-xs" />
+            AI Report
+          </Link>
+          {/* Arrow */}
+          <Link
+            to={`/history/report?reviewId=${review.id}`}
+            className="text-text-muted group-hover:text-primary transition-colors"
+            tabIndex={-1}
+            aria-hidden="true"
+          >
+            <RiArrowRightLine />
+          </Link>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 const HistoryPage = () => {
-  // In the future, this will be fetched from /api/reviews
-  const reviews = [];
-  const isLoading = false;
+  const [reviews, setReviews] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchHistory = async (showLoader = true) => {
+    if (showLoader) setIsLoading(true);
+    try {
+      const data = await reviewService.getUserReviews();
+      setReviews(data || []);
+      setError(null);
+    } catch (e) {
+      console.error('[HistoryPage] Failed to fetch reviews:', e);
+      setError(e.response?.data?.error || e.message || 'Failed to load reviews');
+    } finally {
+      if (showLoader) setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory(true);
+
+    // Listen to review triggered events for auto refresh
+    const handleRefresh = () => fetchHistory(false);
+    window.addEventListener('reviewTriggered', handleRefresh);
+
+    return () => {
+      window.removeEventListener('reviewTriggered', handleRefresh);
+    };
+  }, []);
+
+  // Dynamic Polling Effect: only poll when there are pending or processing reviews
+  useEffect(() => {
+    const hasActiveReviews = reviews.some(r => r.status === 'pending' || r.status === 'processing');
+    if (!hasActiveReviews) return;
+
+    const interval = setInterval(() => fetchHistory(false), 7000);
+    return () => clearInterval(interval);
+  }, [reviews]);
 
   return (
     <div className="min-h-full">
-
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
         {/* Page Header */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
@@ -57,7 +181,7 @@ const HistoryPage = () => {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1, duration: 0.4 }}
-          className="glass-card p-4 mb-6 flex items-center gap-3 opacity-50"
+          className="glass-card p-4 mb-6 flex items-center gap-3 opacity-70"
         >
           <span className="text-sm text-text-muted">Filters:</span>
           {['All Repos', 'This Week', 'High Severity'].map((filter) => (
@@ -68,13 +192,18 @@ const HistoryPage = () => {
               {filter}
             </span>
           ))}
-          <span className="ml-auto text-xs text-text-muted">Available after GitHub integration</span>
+          <span className="ml-auto text-xs text-text-muted">Filtered by active repositories</span>
         </motion.div>
 
         {/* Review List or Loading */}
         {isLoading ? (
           <div className="space-y-4">
             {[1, 2, 3].map((i) => <ReviewSkeleton key={i} />)}
+          </div>
+        ) : error ? (
+          <div className="glass-card py-10 px-8 text-center">
+            <RiErrorWarningLine className="text-3xl text-red-400 mx-auto mb-3" />
+            <p className="text-sm text-text-muted">{error}</p>
           </div>
         ) : reviews.length === 0 ? (
           /* Empty State */
@@ -87,20 +216,83 @@ const HistoryPage = () => {
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-surface-2 border border-border mb-6">
               <RiCodeSSlashLine className="text-4xl text-text-muted" />
             </div>
-            <h3 className="text-xl font-semibold text-text-primary mb-3">
-              No Reviews Yet
-            </h3>
+            <h3 className="text-xl font-semibold text-text-primary mb-3">No Reviews Yet</h3>
             <p className="text-text-muted text-sm max-w-sm mx-auto leading-relaxed mb-8">
-              Once you connect your GitHub account and install the SmartReview App
-              on your repositories, AI reviews will appear here automatically.
+              Once you connect your GitHub account and enable code review on a repository,
+              AI reviews will appear here automatically when pull requests are opened.
             </p>
             <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-surface-2 border border-border-light text-sm text-text-muted">
               <RiGithubLine className="text-base" />
-              GitHub integration coming soon
+              Trigger a review on any repo to start
             </div>
           </motion.div>
-        ) : null}
+        ) : (
+          <div className="space-y-4">
+            {reviews.map((review) => {
+              const repoLabel = review.repositories
+                ? `${review.repositories.owner}/${review.repositories.name}`
+                : 'Repository';
+                
+              const statusColors = {
+                pending: 'bg-warning/10 text-warning border-warning/20',
+                processing: 'bg-primary/10 text-primary border-primary/20',
+                completed: 'bg-success/10 text-success border-success/20',
+                failed: 'bg-red-500/10 text-red-500 border-red-500/20',
+              };
 
+              const statusLabels = {
+                pending: '🟡 Queued',
+                processing: '⚙️ AI Reviewing',
+                completed: '✅ Completed',
+                failed: '❌ Failed',
+              };
+
+              return (
+                <motion.div
+                  key={review.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="glass-card p-5"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    <div className="flex items-start gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary text-xl shrink-0">
+                        <RiCodeSSlashLine />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-text-primary">
+                          {review.pr_title || `Review PR #${review.pr_number}`}
+                        </h4>
+                        <p className="text-xs text-text-muted mt-1 flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-text-primary">{repoLabel}</span>
+                          <span>•</span>
+                          <a
+                            href={review.pr_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline text-primary"
+                          >
+                            PR #{review.pr_number}
+                          </a>
+                          <span>•</span>
+                          <span>{new Date(review.created_at).toLocaleString()}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border shrink-0 ${statusColors[review.status] || 'bg-surface-2 text-text-muted border-border'}`}>
+                      {statusLabels[review.status] || review.status}
+                    </span>
+                  </div>
+                  {review.status === 'failed' && review.error_message && (
+                    <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-500">
+                      Error: {review.error_message}
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
       </main>
     </div>
   );
