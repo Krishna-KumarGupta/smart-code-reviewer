@@ -52,8 +52,10 @@ export const upsertGitHubAccount = async (userId, accountData) => {
         updated_at: new Date().toISOString(),
       },
       {
-        onConflict: 'user_id', // UNIQUE(user_id) — update existing record
-        ignoreDuplicates: false,
+        // Reference the named constraint explicitly so Postgres resolves
+        // the conflict on user_id only — never on github_user_id.
+        onConflict: 'user_id',
+        ignoreDuplicates: false, // always UPDATE existing row, never skip
       }
     )
     .select('id, github_user_id, github_username, github_avatar, created_at, updated_at')
@@ -63,6 +65,7 @@ export const upsertGitHubAccount = async (userId, accountData) => {
 
   return data;
 };
+
 
 /**
  * Delete a user's GitHub account record (disconnect).

@@ -196,18 +196,27 @@ async def trigger_review(
 
     Returns a review_id that can be polled via GET /reviews/{review_id}.
     """
-    review_id = str(uuid.uuid4())
+    review_id = body.review_id if body.review_id else str(uuid.uuid4())
 
     async with get_session() as session:
-        review = Review(
-            id=review_id,
-            repo_url=body.repo_url,
-            pr_number=body.pr_number,
-            user_id=ctx.user_id,
-            user_email=ctx.user_email,
-            status="queued",
-        )
-        session.add(review)
+        review = await session.get(Review, review_id)
+        if review:
+            review.repo_url = body.repo_url
+            review.pr_number = body.pr_number
+            review.user_id = ctx.user_id
+            review.user_email = ctx.user_email
+            review.status = "queued"
+            review.error = None
+        else:
+            review = Review(
+                id=review_id,
+                repo_url=body.repo_url,
+                pr_number=body.pr_number,
+                user_id=ctx.user_id,
+                user_email=ctx.user_email,
+                status="queued",
+            )
+            session.add(review)
 
     # Extract clone URL and SHAs via GitHub API
     try:

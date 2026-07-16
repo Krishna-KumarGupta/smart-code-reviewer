@@ -20,15 +20,15 @@ import morgan from 'morgan';
 
 import profileRoutes      from './src/routes/profile.js';
 import adminRoutes        from './src/routes/admin.js';
-import reviewRoutes       from './src/routes/reviewRoutes.js';
 import githubRoutes       from './src/github/routes/githubRoutes.js';
 import githubWebhookRoutes from './src/github/routes/githubWebhookRoutes.js';
 import githubWebhookManagementRoutes from './src/github/routes/githubWebhookManagementRoutes.js';
+import reviewRoutes       from './src/routes/review.routes.js';
 import notFound           from './src/middleware/notFound.js';
 import errorHandler       from './src/middleware/errorHandler.js';
 
 const app  = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // ─── Security & Logging ───────────────────────────────────────────────────────
 app.use(helmet());

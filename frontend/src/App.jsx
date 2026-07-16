@@ -11,6 +11,7 @@
  *       ├─ /home           → HomePage
  *       ├─ /history        → HistoryPage
  *       ├─ /history/report → AIReviewReportPage   (new — ?reviewId=<uuid>)
+ *       ├─ /reviews/:id    → ReviewReportPage
  *       ├─ /repos          → RepositoriesPage
  *       └─ /settings       → SettingsPage
  *
@@ -80,6 +81,7 @@ const App = () => {
                 <Route path="/home"               element={<HomePage />} />
                 <Route path="/history"            element={<HistoryPage />} />
                 <Route path="/history/report"     element={<AIReviewReportPage />} />
+                <Route path="/reviews/:reviewId"  element={<AIReviewReportPage />} />
                 <Route path="/repos"              element={<RepositoriesPage />} />
                 <Route path="/settings"           element={<SettingsPage />} />
                 <Route path="/settings/github"    element={<GitHubSettingsPage />} />

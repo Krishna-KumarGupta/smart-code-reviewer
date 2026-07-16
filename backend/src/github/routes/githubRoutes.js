@@ -24,6 +24,7 @@ import {
   syncRepositories,
   getSyncedRepositories,
   enableRepository,
+  getOpenPullRequests,
 } from '../controllers/githubController.js';
 
 const router = express.Router();
@@ -40,6 +41,7 @@ router.get('/callback', handleGitHubCallback);
 // ─── Account Management ───────────────────────────────────────────────────────
 router.get('/status',      verifyJWT, getGitHubStatus);
 router.get('/repos',       verifyJWT, getRepositories);
+router.get('/repos/:owner/:repo/pulls', verifyJWT, getOpenPullRequests);
 router.get('/repositories', verifyJWT, getSyncedRepositories);
 router.post('/sync-repositories', verifyJWT, syncRepositories);
 router.post('/disconnect', verifyJWT, disconnectGitHub);

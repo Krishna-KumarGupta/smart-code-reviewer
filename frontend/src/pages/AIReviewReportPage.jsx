@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   RiArrowLeftLine,
@@ -48,47 +48,47 @@ const SEVERITY_CFG = {
   critical: {
     label: 'Critical',
     badge: 'bg-red-500/15 text-red-400 border border-red-500/25',
-    bar:   'bg-red-500',
-    row:   'border-red-500/30 bg-red-500/5',
+    bar: 'bg-red-500',
+    row: 'border-red-500/30 bg-red-500/5',
   },
   high: {
     label: 'High',
     badge: 'bg-orange-500/15 text-orange-400 border border-orange-500/25',
-    bar:   'bg-orange-500',
-    row:   'border-orange-500/30 bg-orange-500/5',
+    bar: 'bg-orange-500',
+    row: 'border-orange-500/30 bg-orange-500/5',
   },
   medium: {
     label: 'Medium',
     badge: 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/25',
-    bar:   'bg-yellow-500',
-    row:   'border-yellow-500/30 bg-yellow-500/5',
+    bar: 'bg-yellow-500',
+    row: 'border-yellow-500/30 bg-yellow-500/5',
   },
   low: {
     label: 'Low',
     badge: 'bg-blue-500/15 text-blue-400 border border-blue-500/25',
-    bar:   'bg-blue-500',
-    row:   'border-blue-500/30 bg-blue-500/5',
+    bar: 'bg-blue-500',
+    row: 'border-blue-500/30 bg-blue-500/5',
   },
 };
 
 const STATUS_CFG = {
-  completed:  { label: 'Completed',  cls: 'bg-green-500/15  text-green-400  border border-green-500/25'  },
-  processing: { label: 'Processing', cls: 'bg-blue-500/15   text-blue-400   border border-blue-500/25'   },
-  pending:    { label: 'Pending',    cls: 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/25' },
-  queued:     { label: 'Queued',     cls: 'bg-zinc-500/15   text-zinc-400   border border-zinc-500/25'   },
-  running:    { label: 'Running',    cls: 'bg-blue-500/15   text-blue-400   border border-blue-500/25'   },
-  failed:     { label: 'Failed',     cls: 'bg-red-500/15    text-red-400    border border-red-500/25'    },
+  completed: { label: 'Completed', cls: 'bg-green-500/15  text-green-400  border border-green-500/25' },
+  processing: { label: 'Processing', cls: 'bg-blue-500/15   text-blue-400   border border-blue-500/25' },
+  pending: { label: 'Pending', cls: 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/25' },
+  queued: { label: 'Queued', cls: 'bg-zinc-500/15   text-zinc-400   border border-zinc-500/25' },
+  running: { label: 'Running', cls: 'bg-blue-500/15   text-blue-400   border border-blue-500/25' },
+  failed: { label: 'Failed', cls: 'bg-red-500/15    text-red-400    border border-red-500/25' },
 };
 
 function scoreTier(score) {
   if (score == null) return null;
-  if (score >= 80) return { color: 'text-green-400', bg: 'bg-green-500/10', ring: 'stroke-green-500', label: 'Looking good'         };
-  if (score >= 50) return { color: 'text-amber-400',  bg: 'bg-amber-500/10',  ring: 'stroke-amber-500', label: 'Needs attention'       };
-  return              { color: 'text-red-400',   bg: 'bg-red-500/10',   ring: 'stroke-red-500',   label: 'Critical issues found' };
+  if (score >= 80) return { color: 'text-green-400', bg: 'bg-green-500/10', ring: 'stroke-green-500', label: 'Looking good' };
+  if (score >= 50) return { color: 'text-amber-400', bg: 'bg-amber-500/10', ring: 'stroke-amber-500', label: 'Needs attention' };
+  return { color: 'text-red-400', bg: 'bg-red-500/10', ring: 'stroke-red-500', label: 'Critical issues found' };
 }
 
 const POLL_INTERVAL = 4000;
-const PAGE_SIZE     = 5;
+const PAGE_SIZE = 5;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -107,17 +107,17 @@ function normaliseSev(s) {
 }
 
 function formatLineInfo(bug) {
-  const file  = bug.file || bug.filename || null;
+  const file = bug.file || bug.filename || null;
   const start = bug.line_start ?? bug.lineStart ?? null;
-  const end   = bug.line_end   ?? bug.lineEnd   ?? null;
+  const end = bug.line_end ?? bug.lineEnd ?? null;
   if (!file) return null;
   if (!start || start === 0) return `${file} — no direct line`;
-  if (end && end !== start)  return `${file}:${start}-${end}`;
+  if (end && end !== start) return `${file}:${start}-${end}`;
   return `${file}:${start}`;
 }
 
 function buildFileLink(repoUrl, headSha, bug) {
-  const file  = bug.file || bug.filename || null;
+  const file = bug.file || bug.filename || null;
   const start = bug.line_start ?? bug.lineStart ?? null;
   if (!file || !repoUrl || !headSha) return null;
   const lineFragment = (start && start !== 0) ? `#L${start}` : '';
@@ -127,7 +127,7 @@ function buildFileLink(repoUrl, headSha, bug) {
 // ─── Sub-components (defined outside the page so they aren't recreated) ───────
 
 const ScoreRing = ({ score, tier }) => {
-  const r    = 44;
+  const r = 44;
   const circ = 2 * Math.PI * r;
   const dash = (Math.min(100, Math.max(0, score ?? 0)) / 100) * circ;
   return (
@@ -173,15 +173,15 @@ const SeverityBar = ({ label, count, total, cfg }) => {
 
 const FindingCard = ({ bug, index, repoUrl, headSha }) => {
   const [fixOpen, setFixOpen] = useState(false);
-  const sev       = normaliseSev(bug.severity);
-  const cfg       = SEVERITY_CFG[sev] || SEVERITY_CFG.low;
-  const source    = bug.source || bug.type || '—';
-  const lineInfo  = formatLineInfo(bug);
-  const fileLink  = buildFileLink(repoUrl, headSha, bug);
-  const desc      = bug.description || bug.explanation || bug.message || '';
-  const fix       = bug.fix || bug.suggestedFix || bug.suggested_fix || '';
-  const fixLong   = fix.length > 200;
-  const isCirc    = source === 'circular_dependency';
+  const sev = normaliseSev(bug.severity);
+  const cfg = SEVERITY_CFG[sev] || SEVERITY_CFG.low;
+  const source = bug.source || bug.type || '—';
+  const lineInfo = formatLineInfo(bug);
+  const fileLink = buildFileLink(repoUrl, headSha, bug);
+  const desc = bug.description || bug.explanation || bug.message || '';
+  const fix = bug.fix || bug.suggestedFix || bug.suggested_fix || '';
+  const fixLong = fix.length > 200;
+  const isCirc = source === 'circular_dependency';
   const cyclePath = bug.cycle_path || bug.cyclePath || null;
 
   return (
@@ -257,16 +257,17 @@ const FindingCard = ({ bug, index, repoUrl, headSha }) => {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const AIReviewReportPage = () => {
+  const { reviewId: routeReviewId } = useParams();
   const [searchParams] = useSearchParams();
-  const navigate       = useNavigate();
-  const reviewId       = searchParams.get('reviewId');
+  const navigate = useNavigate();
+  const reviewId = routeReviewId || searchParams.get('reviewId');
 
-  const [review,   setReview]   = useState(null);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState(null);
+  const [review, setReview] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [retrying, setRetrying] = useState(false);
   const [srcFilter, setSrcFilter] = useState('all');
-  const [shown,    setShown]    = useState(PAGE_SIZE);
+  const [shown, setShown] = useState(PAGE_SIZE);
 
   const intervalRef = useRef(null);
 
@@ -274,10 +275,11 @@ const AIReviewReportPage = () => {
   const fetchReview = useCallback(async () => {
     if (!reviewId) return;
     try {
-      const { review: data } = await reviewService.getReview(reviewId);
-      setReview(data);
+      const response = await reviewService.getReview(reviewId);
+      const review = response.data;
+      setReview(review);
       setError(null);
-      if (data.status === 'completed' || data.status === 'failed') {
+      if (review.status === 'completed' || review.status === 'failed') {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
@@ -312,17 +314,42 @@ const AIReviewReportPage = () => {
   useEffect(() => { setShown(PAGE_SIZE); }, [srcFilter]);
 
   // ── Derived data ──────────────────────────────────────────────────────────
-  const result       = review?.result || null;
-  const repo         = review?.repositories;
-  const repoUrl      = repo ? `https://github.com/${repo.full_name}` : null;
-  const headSha      = result?.metadata?.head_sha || result?.metadata?.headSha || null;
+  const repo = review?.repositories;
+  const repoUrl = review?.repo_url || (repo ? `https://github.com/${repo.full_name}` : null);
 
-  const allBugs      = result?.bugs || result?.findings || [];
-  const improvements = result?.improvements || [];
-  const summary      = result?.summary || null;
-  const metadata     = result?.metadata || {};
-  const score        = result?.score ?? result?.metadata?.score ?? null;
-  const tier         = scoreTier(score);
+  const isReportNull = review?.report_json === null || review?.report_json === undefined;
+
+  // Parsing and normalizing report_json defensively
+  let report = review?.report_json;
+
+  if (report === null || report === undefined) {
+    report = {};
+  }
+
+  if (typeof report === "string") {
+    try {
+      report = JSON.parse(report);
+    } catch {
+      report = {};
+    }
+  }
+
+  const bugs = Array.isArray(report.bugs) ? report.bugs : [];
+  const improvements = Array.isArray(report.improvements) ? report.improvements : [];
+  const score = report.score ?? null;
+  const narrative = report.review || report.summary || "";
+
+  // Temporary development logging
+  console.log("[AI Report] reviewId:", reviewId);
+  console.log("[AI Report] API response:", review);
+  console.log("[AI Report] report_json:", review?.report_json);
+
+  const result = report; // to keep result fallback variables working if referenced elsewhere
+  const allBugs = bugs;
+  const summary = narrative;
+  const metadata = report.metadata || {};
+  const headSha = metadata.head_sha || metadata.headSha || report.head_sha || report.headSha || null;
+  const tier = scoreTier(score);
 
   const sevCounts = useMemo(() => {
     const c = { critical: 0, high: 0, medium: 0, low: 0 };
@@ -346,12 +373,12 @@ const AIReviewReportPage = () => {
   }, [allBugs, srcFilter]);
 
   const visibleBugs = filteredBugs.slice(0, shown);
-  const remaining   = filteredBugs.length - shown;
+  const remaining = filteredBugs.length - shown;
 
-  const status    = review?.status || 'pending';
+  const status = review?.status || 'pending';
   const statusCfg = STATUS_CFG[status] || STATUS_CFG.pending;
-  const isActive  = ['queued', 'running', 'pending', 'processing'].includes(status);
-  const isFailed  = status === 'failed';
+  const isActive = ['queued', 'running', 'pending', 'processing'].includes(status);
+  const isFailed = status === 'failed';
 
   const prLink = review?.pr_url
     || (repoUrl && review?.pr_number ? `${repoUrl}/pull/${review.pr_number}` : null);
@@ -453,9 +480,9 @@ const AIReviewReportPage = () => {
               </p>
               <div className="flex flex-wrap items-center gap-2 mt-1">
                 <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusCfg.cls}`}>
-                  {isActive  && <RiLoader4Line className="text-xs animate-spin" />}
+                  {isActive && <RiLoader4Line className="text-xs animate-spin" />}
                   {status === 'completed' && <RiCheckLine className="text-xs" />}
-                  {isFailed  && <RiErrorWarningLine className="text-xs" />}
+                  {isFailed && <RiErrorWarningLine className="text-xs" />}
                   {statusCfg.label}
                 </span>
                 <span className="text-xs text-text-muted">{new Date(review.created_at).toLocaleString()}</span>
@@ -656,11 +683,10 @@ const AIReviewReportPage = () => {
                   <div className="flex flex-wrap gap-1.5">
                     {sourceTabs.map((src) => (
                       <button key={src} onClick={() => setSrcFilter(src)}
-                        className={`rounded-lg px-3 py-1 text-xs font-medium transition ${
-                          srcFilter === src
+                        className={`rounded-lg px-3 py-1 text-xs font-medium transition ${srcFilter === src
                             ? 'bg-primary text-white'
                             : 'bg-surface-2 text-text-muted hover:text-text-primary border border-border'
-                        }`}>
+                          }`}>
                         {src === 'all' ? 'All' : src.replace(/_/g, ' ')}
                       </button>
                     ))}
@@ -698,8 +724,17 @@ const AIReviewReportPage = () => {
               </motion.div>
             )}
 
+            {/* AI report is not available yet */}
+            {!isFailed && !isActive && isReportNull && (
+              <div className="glass-card py-14 px-8 text-center">
+                <RiErrorWarningLine className="text-4xl text-yellow-500 mx-auto mb-3" />
+                <h3 className="text-base font-semibold text-text-primary mb-1">AI report is not available yet.</h3>
+                <p className="text-sm text-text-muted">This review is either pending execution or the report payload is empty.</p>
+              </div>
+            )}
+
             {/* Clean bill of health */}
-            {!isFailed && !isActive && totalBugs === 0 && result && (
+            {!isFailed && !isActive && totalBugs === 0 && !isReportNull && (
               <div className="glass-card py-14 px-8 text-center">
                 <RiShieldCheckLine className="text-4xl text-green-400 mx-auto mb-3" />
                 <h3 className="text-base font-semibold text-text-primary mb-1">No issues found</h3>
