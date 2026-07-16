@@ -15,6 +15,8 @@ import {
   RiShieldCheckLine,
   RiArrowRightLine,
   RiTimeLine,
+  RiSparklingLine,
+  RiFileTextLine,
 } from 'react-icons/ri';
 
 import useAuth from '../hooks/useAuth.js';
@@ -187,6 +189,39 @@ const HomePage = () => {
         </div>
 
 
+        {/* AI Review CTA Banner */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.28, duration: 0.4 }}
+          className="mb-8"
+        >
+          <div className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/10 via-accent/5 to-primary/10 p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            {/* Decorative glow */}
+            <div className="pointer-events-none absolute -top-8 -left-8 w-40 h-40 rounded-full bg-primary/20 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-8 -right-8 w-40 h-40 rounded-full bg-accent/20 blur-3xl" />
+
+            <div className="flex items-center gap-3 relative z-10">
+              <div className="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center shrink-0">
+                <RiSparklingLine className="text-primary text-lg" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-text-primary">AI-Powered Code Review Reports</p>
+                <p className="text-xs text-text-muted mt-0.5">Browse detailed AI analysis reports for all your pull request reviews.</p>
+              </div>
+            </div>
+
+            <Link
+              id="home-view-ai-reports-btn"
+              to="/history"
+              className="relative z-10 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold hover:opacity-90 active:scale-95 transition-all duration-200 shrink-0 shadow-lg shadow-primary/30"
+            >
+              <RiFileTextLine className="text-base" />
+              View AI Reports
+              <RiArrowRightLine className="text-xs" />
+            </Link>
+          </div>
+        </motion.div>
 
 
         {/* Main Content Grid */}
@@ -343,6 +378,40 @@ const HomePage = () => {
                     className="
                     text-text-muted
                     group-hover:text-primary
+                    transition-colors
+                    text-sm"
+                  />
+
+
+                </Link>
+
+
+                {/* View AI Reports link */}
+                <Link
+                  id="home-quick-link-ai-reports"
+                  to="/history"
+                  className="
+                  flex items-center
+                  justify-between
+                  p-3 rounded-xl
+                  hover:bg-surface-2
+                  transition-all
+                  group"
+                >
+
+                  <div className="flex items-center gap-2.5 text-sm text-text-secondary">
+
+                    <RiSparklingLine className="text-accent" />
+
+                    View AI Reports
+
+                  </div>
+
+
+                  <RiArrowRightLine
+                    className="
+                    text-text-muted
+                    group-hover:text-accent
                     transition-colors
                     text-sm"
                   />
