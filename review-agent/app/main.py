@@ -281,6 +281,9 @@ async def get_review(
     return ReviewStatusResponse(
         review_id=review.id,
         status=review.status,  # type: ignore[arg-type]
+        repo_url=review.repo_url,
+        pr_number=review.pr_number,
+        created_at=review.created_at.isoformat(),
         report=report,
         error=review.error,
     )
@@ -299,7 +302,12 @@ async def list_reviews(
     List past reviews, optionally filtered by repo URL.
     """
     async with get_session() as session:
-        stmt = select(Review).order_by(Review.created_at.desc()).limit(50)
+        stmt = (
+            select(Review)
+            .where(Review.user_id == ctx.user_id)
+            .order_by(Review.created_at.desc())
+            .limit(50)
+        )
         if repo:
             stmt = stmt.where(Review.repo_url == repo)
         result = await session.execute(stmt)
@@ -308,10 +316,13 @@ async def list_reviews(
     items: list[ReviewListItem] = []
     for r in reviews:
         score = None
+        finding_count = None
         if r.report_json:
             try:
                 data = json.loads(r.report_json)
                 score = data.get("score")
+                bugs = data.get("bugs") or data.get("findings") or []
+                finding_count = len(bugs)
             except Exception:
                 pass
         items.append(ReviewListItem(
@@ -320,6 +331,7 @@ async def list_reviews(
             pr_number=r.pr_number,
             status=r.status,  # type: ignore[arg-type]
             score=score,
+            finding_count=finding_count,
             created_at=r.created_at.isoformat(),
         ))
     return items

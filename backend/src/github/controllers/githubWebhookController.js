@@ -36,6 +36,7 @@
 
 import { verifyWebhookSignature }                        from '../utils/githubWebhookVerifier.js';
 import { handlePullRequestEvent, handlePingEvent }       from '../services/githubWebhookService.js';
+import { REVIEW_AGENT_URL, makeReviewAgentHeaders }     from '../../utils/reviewAgent.js';
 
 // ─── POST /api/github/webhook ─────────────────────────────────────────────────
 
@@ -114,6 +115,63 @@ export const handleWebhook = async (req, res, next) => {
     if (eventType === 'pull_request') {
       // ── pull_request: Delegate full processing to the service layer ───────
       const result = await handlePullRequestEvent(payload);
+
+      if (result.handled) {
+        try {
+          const repo_url = result.repository.html_url || `https://github.com/${result.repository.full_name}`;
+          const pr_number = result.pullRequest.number;
+          const userEmail = result.ownerEmail || 'webhook@system.local';
+          const headers = makeReviewAgentHeaders({ id: 'webhook-system', email: userEmail });
+
+          console.log(`[githubWebhookController] Processing pull_request for ${repo_url} PR #${pr_number}`);
+
+          // Duplicate prevention check
+          const checkParams = new URLSearchParams({ repo: repo_url });
+          const checkResponse = await fetch(
+            `${REVIEW_AGENT_URL}/reviews?${checkParams.toString()}`,
+            {
+              method:  'GET',
+              headers,
+            }
+          );
+
+          let hasDuplicate = false;
+          if (checkResponse.ok) {
+            const list = await checkResponse.json().catch(() => []);
+            const duplicate = list.find(
+              item => item.pr_number === pr_number &&
+                      ['queued', 'running', 'pending', 'processing'].includes(item.status)
+            );
+            if (duplicate) {
+              console.log(
+                `[githubWebhookController] Duplicate active review found (id: ${duplicate.review_id}, status: ${duplicate.status}) for PR #${pr_number}. Skipping trigger.`
+              );
+              hasDuplicate = true;
+            }
+          } else {
+            console.warn(`[githubWebhookController] Duplicate check failed to query reviews list (status: ${checkResponse.status})`);
+          }
+
+          if (!hasDuplicate) {
+            const agentResponse = await fetch(`${REVIEW_AGENT_URL}/reviews`, {
+              method:  'POST',
+              headers,
+              body:    JSON.stringify({ repo_url, pr_number }),
+            });
+
+            if (!agentResponse.ok) {
+              const errorData = await agentResponse.json().catch(() => ({}));
+              console.error('[githubWebhookController] review-agent responded with error:', errorData);
+            } else {
+              const data = await agentResponse.json();
+              console.log(`[githubWebhookController] Successfully enqueued review pipeline. review_id: ${data.review_id}`);
+            }
+          }
+        } catch (error) {
+          console.error('[githubWebhookController] Failed to trigger review-agent:', error);
+        }
+      }
+
       return res.status(200).json({
         success: true,
         handled: result.handled,

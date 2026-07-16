@@ -8,8 +8,10 @@ import {
   RiWebhookLine,
   RiFlashlightLine,
   RiLoader4Line,
+  RiCodeSSlashLine,
 } from 'react-icons/ri';
 import githubService from '../services/githubService.js';
+import TriggerReviewModal from '../components/github/TriggerReviewModal.jsx';
 
 const RepositoriesPage = () => {
   const [repositories, setRepositories]     = useState([]);
@@ -19,6 +21,10 @@ const RepositoriesPage = () => {
   // Tracks which repos are currently being enabled (to show per-card spinner).
   // Shape: { [repoId]: true }
   const [enablingRepos, setEnablingRepos] = useState({});
+
+  // Manual Trigger Modal States
+  const [triggerRepo, setTriggerRepo] = useState(null);
+  const [isTriggerModalOpen, setIsTriggerModalOpen] = useState(false);
 
   // ─── Load repositories from the local DB (already synced) ─────────────────
   const loadRepositories = async () => {
@@ -116,13 +122,26 @@ const RepositoriesPage = () => {
             </p>
           </div>
 
-          <button
-            onClick={handleRefresh}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-medium hover:opacity-90 transition"
-          >
-            <RiRefreshLine />
-            Refresh from GitHub
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                setTriggerRepo(repositories[0] || null);
+                setIsTriggerModalOpen(true);
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:opacity-90 transition"
+            >
+              <RiCodeSSlashLine />
+              Review a PR
+            </button>
+
+            <button
+              onClick={handleRefresh}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-medium hover:opacity-90 transition"
+            >
+              <RiRefreshLine />
+              Refresh from GitHub
+            </button>
+          </div>
         </motion.div>
 
         {/* ── Repository Grid ───────────────────────────────────────────────── */}
@@ -203,15 +222,16 @@ const RepositoriesPage = () => {
                   </div>
 
                   {/* ── Enable Code Review CTA ──────────────────────────── */}
-                  <div className="mt-5">
+                  {/* ── Actions ──────────────────────────── */}
+                  <div className="mt-5 flex gap-3">
                     {webhookIsActive ? (
                       /* Already enabled — static confirmation */
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-green-500 font-medium flex items-center gap-1.5">
+                      <div className="flex-1 flex items-center justify-between text-sm bg-green-500/5 border border-green-500/10 rounded-xl px-3 py-2">
+                        <span className="text-green-500 font-medium flex items-center gap-1.5 text-xs">
                           <RiCheckLine />
-                          Code Review Enabled
+                          Review Enabled
                         </span>
-                        <RiWebhookLine className="text-green-500" />
+                        <RiWebhookLine className="text-green-500 text-xs" />
                       </div>
                     ) : (
                       /* Not yet enabled — show the enable button */
@@ -220,24 +240,41 @@ const RepositoriesPage = () => {
                         type="button"
                         onClick={(e) => handleEnableRepository(e, repo)}
                         disabled={isEnabling}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl
-                                   bg-primary/10 text-primary text-sm font-medium
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl
+                                   bg-primary/10 text-primary text-xs font-semibold
                                    hover:bg-primary/20 transition
                                    disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         {isEnabling ? (
                           <>
-                            <RiLoader4Line className="animate-spin text-base" />
-                            Creating webhook…
+                            <RiLoader4Line className="animate-spin text-sm" />
+                            Enabling...
                           </>
                         ) : (
                           <>
-                            <RiFlashlightLine className="text-base" />
-                            Enable Code Review
+                            <RiFlashlightLine className="text-sm" />
+                            Enable Review
                           </>
                         )}
                       </button>
                     )}
+
+                    {/* Trigger Manual Review Button */}
+                    <button
+                      id={`trigger-review-repo-${repo.id}`}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTriggerRepo(repo);
+                        setIsTriggerModalOpen(true);
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl
+                                 bg-accent/10 text-accent text-xs font-semibold
+                                 hover:bg-accent/20 transition"
+                    >
+                      <RiCodeSSlashLine className="text-sm" />
+                      Review PR
+                    </button>
                   </div>
                 </motion.div>
               );
@@ -245,6 +282,17 @@ const RepositoriesPage = () => {
           </div>
         )}
       </main>
+
+      {/* Trigger Review Modal */}
+      <TriggerReviewModal
+        isOpen={isTriggerModalOpen}
+        onClose={() => {
+          setIsTriggerModalOpen(false);
+          setTriggerRepo(null);
+        }}
+        repositories={repositories}
+        initialRepository={triggerRepo}
+      />
     </div>
   );
 };

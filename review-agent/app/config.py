@@ -46,6 +46,18 @@ class Settings(BaseSettings):
     # ── Impact slicing ────────────────────────────────────────────────────────
     impact_slice_max_tokens: int = 20_000
 
+    # ── Email Settings ────────────────────────────────────────────────────────
+    email_enabled: bool = False
+    email_provider: Literal["brevo", "ses"] = "brevo"
+    brevo_api_key: str | None = None
+    brevo_sender_email: str | None = None
+    brevo_sender_name: str = "review-agent"
+    aws_ses_access_key: str | None = None
+    aws_ses_secret_key: str | None = None
+    aws_ses_region: str = "us-east-1"
+    aws_ses_sender_email: str | None = None
+    frontend_review_url_base: str = "http://localhost:5173/reviews"
+
     # ── Database ──────────────────────────────────────────────────────────────
     database_url: str = "sqlite+aiosqlite:///./review_agent.db"
 

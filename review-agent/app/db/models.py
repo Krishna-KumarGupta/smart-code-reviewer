@@ -49,6 +49,8 @@ class Review(Base):
     )
     report_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    email_sent: Mapped[bool] = mapped_column(default=False, server_default="false", nullable=False)
+    email_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now
     )

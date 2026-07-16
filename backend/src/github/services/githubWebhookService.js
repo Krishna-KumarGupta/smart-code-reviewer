@@ -82,10 +82,10 @@ export const handlePullRequestEvent = async (payload) => {
   // ── Step 3: Verify repository exists in our database ─────────────────────
   // We match by `github_repo_id` — the integer repository ID assigned by GitHub.
   // This is stable even if the repo is renamed or transferred.
-  const repositoryExists = await checkRepositoryExists(cleanPayload.repository.id);
+  const repoRecord = await checkRepositoryExists(cleanPayload.repository.id);
 
   // ── Step 4: Repository not managed by Smart Code Reviewer ────────────────
-  if (!repositoryExists) {
+  if (!repoRecord) {
     console.log(
       `[githubWebhookService] Repository "${cleanPayload.repository.full_name}" ` +
       `(github_repo_id: ${cleanPayload.repository.id}) is not managed by Smart Code Reviewer`
@@ -108,6 +108,7 @@ export const handlePullRequestEvent = async (payload) => {
     pullRequest:  cleanPayload.pullRequest,
     installation: cleanPayload.installation,
     sender:       cleanPayload.sender,
+    ownerEmail:   repoRecord.profiles?.email || null,
   };
 };
 
@@ -156,6 +157,7 @@ const extractPullRequestPayload = (payload) => {
       full_name: repository?.full_name,
       name:      repository?.name,
       owner:     repository?.owner?.login,
+      html_url:  repository?.html_url,
     },
 
     // ── Pull request fields ───────────────────────────────────────────────
@@ -197,13 +199,13 @@ const extractPullRequestPayload = (payload) => {
  * @returns {Promise<boolean>} true if the repository is found in our database
  */
 const checkRepositoryExists = async (githubRepoId) => {
-  if (!githubRepoId) return false;
+  if (!githubRepoId) return null;
 
   const { data, error } = await supabaseAdmin
     .from('repositories')
-    .select('id')                          // Only fetch the primary key — minimal data
+    .select('id, profiles(email)')
     .eq('github_repo_id', githubRepoId)
-    .maybeSingle();                        // Returns null (not an error) when not found
+    .maybeSingle();
 
   if (error) {
     console.error(
@@ -211,8 +213,8 @@ const checkRepositoryExists = async (githubRepoId) => {
       error.message
     );
     // On DB error we treat the repository as unmanaged to avoid side effects
-    return false;
+    return null;
   }
 
-  return data !== null;
+  return data;
 };

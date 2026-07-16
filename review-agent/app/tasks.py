@@ -185,6 +185,7 @@ async def _run_async(
             if review:
                 review.status = "failed"
                 review.error = str(exc)
+        await _send_notification_safely(review_id)
         raise
 
     finally:
@@ -238,3 +239,83 @@ async def _persist_report(review_id: str, report) -> None:
         if review:
             review.status = "completed"
             review.report_json = report.model_dump_json()
+
+    await _send_notification_safely(review_id)
+
+
+async def _send_notification_safely(review_id: str) -> None:
+    """
+    Look up the review by ID, check if email has been sent, and send it if not.
+    Catches any exception, updates the DB with email_error on failure,
+    or marks email_sent=True on success.
+    """
+    from app.config import get_settings
+    from app.db.session import get_session
+    from app.db.models import Review
+    from app.notify.email_client import get_email_client
+    import json
+
+    settings = get_settings()
+    if not settings.email_enabled:
+        logger.debug("[email] Email notifications are disabled via kill switch.")
+        return
+
+    async with get_session() as session:
+        review = await session.get(Review, review_id)
+        if not review:
+            logger.warning("[email] Review %s not found for notification.", review_id)
+            return
+
+        if review.email_sent:
+            logger.info("[email] Email already sent for review %s. Skipping.", review_id)
+            return
+
+        to_email = review.user_email
+        if to_email == "webhook@github.com" or not to_email:
+            logger.info("[email] Review %s created by webhook or missing user email. Skipping email.", review_id)
+            return
+
+        # Extract repo name
+        parts = review.repo_url.rstrip("/").rstrip(".git").split("/")
+        repo_name = parts[-1] if parts else "Unknown Repo"
+
+        pr_number = review.pr_number
+        status = review.status
+        error_msg = review.error
+
+        # Default empty fields
+        score = None
+        review_excerpt = ""
+        findings = []
+
+        if review.report_json:
+            try:
+                report_data = json.loads(review.report_json)
+                score = report_data.get("score")
+                review_excerpt = report_data.get("review", "")
+                findings = report_data.get("bugs", [])
+            except Exception as e:
+                logger.error("[email] Failed to parse report_json: %s", e)
+
+        # Call notify client
+        try:
+            client = get_email_client(settings)
+            await client.send_review_notification(
+                to_email=to_email,
+                repo_name=repo_name,
+                pr_number=pr_number,
+                review_id=review_id,
+                status=status,
+                score=score,
+                review_excerpt=review_excerpt,
+                findings=findings,
+                error=error_msg,
+            )
+            # Update database status on success
+            review.email_sent = True
+            review.email_error = None
+            logger.info("[email] Successfully sent email for review %s to %s", review_id, to_email)
+        except Exception as exc:
+            logger.warning("[email] Failed to send email for review %s: %s", review_id, exc)
+            review.email_sent = False
+            review.email_error = str(exc)

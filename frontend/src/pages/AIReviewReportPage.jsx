@@ -189,8 +189,10 @@ const FindingCard = ({ bug, index, repoUrl, headSha }) => {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.03 }}
-      className={`rounded-2xl border p-4 space-y-3 ${cfg.row}`}
+      className={`relative overflow-hidden rounded-2xl border py-4 pr-4 pl-6 space-y-3 ${cfg.row}`}
     >
+      {/* Left color-accent bar */}
+      <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${cfg.bar}`} />
       {/* Header */}
       <div className="flex flex-wrap items-center gap-2">
         <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase ${cfg.badge}`}>
@@ -440,16 +442,15 @@ const AIReviewReportPage = () => {
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
-              <h1 className="text-xl font-bold text-text-primary leading-snug">
-                <span className="font-mono text-text-secondary">
-                  {repo?.full_name || repo?.name || 'Unknown Repo'}
-                </span>
-                <span className="text-text-muted mx-2">·</span>
-                PR #{review.pr_number}
-                {review.pr_title && (
-                  <span className="text-base font-medium text-text-muted ml-2">{review.pr_title}</span>
-                )}
+              {/* Repository: Larger/Bolder */}
+              <h1 className="text-xl font-bold text-text-primary font-mono leading-snug">
+                {repo?.full_name || repo?.name || 'Unknown Repo'}
               </h1>
+              {/* PR details: Smaller/Muted */}
+              <p className="text-sm font-normal text-text-muted mt-0.5">
+                PR #{review.pr_number}
+                {review.pr_title && ` · ${review.pr_title}`}
+              </p>
               <div className="flex flex-wrap items-center gap-2 mt-1">
                 <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusCfg.cls}`}>
                   {isActive  && <RiLoader4Line className="text-xs animate-spin" />}
@@ -498,9 +499,16 @@ const AIReviewReportPage = () => {
                     <SkeletonBlock h="h-3" w="w-1/2" className="mx-auto" />
                   </div>
                 ) : isFailed ? (
-                  <div className="text-center py-2">
-                    <RiErrorWarningLine className="text-3xl text-red-400 mx-auto mb-2" />
-                    <p className="text-xs text-red-400 font-medium">Review failed</p>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-1.5 text-red-400 justify-center">
+                      <RiErrorWarningLine className="text-lg shrink-0" />
+                      <p className="text-xs font-medium">Review failed</p>
+                    </div>
+                    {(result?.error || review?.error) && (
+                      <pre className="text-[10px] text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl p-3 overflow-x-auto whitespace-pre-wrap break-all font-mono leading-relaxed max-h-60 text-left">
+                        {result?.error || review?.error}
+                      </pre>
+                    )}
                   </div>
                 ) : tier ? (
                   <div className="space-y-3 text-center">
@@ -601,11 +609,7 @@ const AIReviewReportPage = () => {
                   </div>
                   <h3 className="text-base font-semibold text-text-primary">Review could not be completed</h3>
                 </div>
-                {(result?.error || review?.error) && (
-                  <pre className="text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl p-4 overflow-x-auto whitespace-pre-wrap break-all font-mono leading-relaxed">
-                    {result?.error || review?.error}
-                  </pre>
-                )}
+
                 {repoUrl && review?.pr_number && (
                   <button onClick={handleRetry} disabled={retrying}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:opacity-90 transition disabled:opacity-60">

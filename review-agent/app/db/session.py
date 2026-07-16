@@ -14,12 +14,15 @@ Usage:
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import logging
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 from app.db.models import Base
+
+logger = logging.getLogger(__name__)
 
 
 def _create_engine():
@@ -100,6 +103,22 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db() -> None:
     """Create all tables if they don't exist (idempotent)."""
+    from sqlalchemy import text
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # Automatically add email columns if they are not already present in the reviews table
+        try:
+            await conn.execute(text("ALTER TABLE reviews ADD COLUMN email_sent BOOLEAN NOT NULL DEFAULT FALSE"))
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            if "already exists" not in exc_str and "duplicate column name" not in exc_str:
+                logger.error("Database migration error while adding email_sent: %s", exc)
+
+        try:
+            await conn.execute(text("ALTER TABLE reviews ADD COLUMN email_error TEXT"))
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            if "already exists" not in exc_str and "duplicate column name" not in exc_str:
+                logger.error("Database migration error while adding email_error: %s", exc)

@@ -11,7 +11,6 @@
  *       ├─ /home           → HomePage
  *       ├─ /history        → HistoryPage
  *       ├─ /history/report → AIReviewReportPage   (new — ?reviewId=<uuid>)
- *       ├─ /reviews/:id    → ReviewReportPage
  *       ├─ /repos          → RepositoriesPage
  *       └─ /settings       → SettingsPage
  *
@@ -36,7 +35,6 @@ import ResetPasswordPage  from './pages/ResetPasswordPage.jsx';
 import HomePage           from './pages/HomePage.jsx';
 import HistoryPage        from './pages/HistoryPage.jsx';
 import AIReviewReportPage from './pages/AIReviewReportPage.jsx';
-import ReviewReportPage   from './pages/ReviewReportPage.jsx';
 import AdminPage          from './pages/AdminPage.jsx';
 import RepositoriesPage   from './pages/RepositoriesPage.jsx';
 import SettingsPage       from './pages/SettingsPage.jsx';
@@ -82,7 +80,6 @@ const App = () => {
                 <Route path="/home"               element={<HomePage />} />
                 <Route path="/history"            element={<HistoryPage />} />
                 <Route path="/history/report"     element={<AIReviewReportPage />} />
-                <Route path="/reviews/:reviewId"  element={<ReviewReportPage />} />
                 <Route path="/repos"              element={<RepositoriesPage />} />
                 <Route path="/settings"           element={<SettingsPage />} />
                 <Route path="/settings/github"    element={<GitHubSettingsPage />} />
