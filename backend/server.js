@@ -20,7 +20,6 @@ import morgan from 'morgan';
 
 import profileRoutes      from './src/routes/profile.js';
 import adminRoutes        from './src/routes/admin.js';
-import reviewRoutes       from './src/routes/reviewRoutes.js';
 import githubRoutes       from './src/github/routes/githubRoutes.js';
 import githubWebhookRoutes from './src/github/routes/githubWebhookRoutes.js';
 import githubWebhookManagementRoutes from './src/github/routes/githubWebhookManagementRoutes.js';
@@ -72,7 +71,6 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/github', githubRoutes);
 app.use('/api/github', githubWebhookManagementRoutes);
-app.use('/api/reviews', reviewRoutes);
 
 // ─── 404 — must be after all routes ──────────────────────────────────────────
 app.use(notFound);

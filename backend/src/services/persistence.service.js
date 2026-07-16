@@ -13,17 +13,17 @@ export class PersistenceService {
       repoUrl = params.prUrl.split('/pull/')[0];
     }
 
-    const reviewId = crypto.randomUUID();
+    const reviewId = params.id || crypto.randomUUID();
 
-    const { data, error } = await supabaseAdmin
+        const { data, error } = await supabaseAdmin
       .from('reviews')
-      .insert({
+      .upsert({
         id: reviewId,
         user_id: params.userId,
         user_email: params.userEmail || null,
         repo_url: repoUrl,
         pr_number: params.prNumber,
-        status: 'pending',
+        status: params.status || 'pending',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

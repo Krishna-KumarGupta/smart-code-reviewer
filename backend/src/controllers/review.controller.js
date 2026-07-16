@@ -44,23 +44,10 @@ export class ReviewController {
         return sendError(res, 'Pull request not found on GitHub', 404);
       }
 
-      // 3. Persist the initial 'pending' review state to the database
-      const reviewId = await PersistenceService.createReview({
+      // 3. Construct unified job payload to enqueue in Redis
+      const jobPayload = {
         userId,
         userEmail: req.user?.email || null,
-        repositoryId,
-        prNumber: metadata.number,
-        prTitle: metadata.title,
-        prUrl: metadata.html_url,
-        prAuthor: metadata.user?.login || 'unknown',
-        baseBranch: metadata.base.ref,
-        headBranch: metadata.head.ref,
-      });
-
-      // 4. Construct unified job payload
-      const jobPayload = {
-        reviewId,
-        userId,
         repositoryId,
         installation_id: repoRow.installation_id || null,
         repository_id: repoRow.github_repo_id,
@@ -75,19 +62,18 @@ export class ReviewController {
         base_sha: metadata.base.sha,
         sender: metadata.user?.login || 'unknown',
         event_type: 'manual',
-        delivery_id: `manual-${reviewId}`,
+        delivery_id: `manual-${repoRow.github_repo_id}-${metadata.number}`,
         timestamp: new Date().toISOString(),
       };
 
-      // 5. Dispatch the Celery task asynchronously using .delay()
+      // 4. Dispatch the Celery task asynchronously using .delay()
       const taskResult = analyzePrTask.delay(jobPayload);
 
       console.log(`[Review Controller] Celery task dispatched with ID: ${taskResult.taskId}`);
 
-      // 6. Return immediately with 202 Accepted status code
+      // 5. Return immediately with 202 Accepted status code
       sendSuccess(res, {
         message: 'AI Review workflow successfully enqueued via Celery',
-        reviewId,
         taskId: taskResult.taskId,
         status: 'pending',
       }, 202);

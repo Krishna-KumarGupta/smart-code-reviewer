@@ -127,7 +127,7 @@ class TriggerReviewResponse(BaseModel):
 
 class ReviewStatusResponse(BaseModel):
     review_id: str
-    status: Literal["queued", "running", "completed", "failed"]
+    status: Literal["queued", "running", "completed", "failed", "processing", "pending"]
     report: ReviewReport | None = None
     error: str | None = None
 
@@ -136,6 +136,6 @@ class ReviewListItem(BaseModel):
     review_id: str
     repo_url: str
     pr_number: int
-    status: Literal["queued", "running", "completed", "failed"]
+    status: Literal["queued", "running", "completed", "failed", "processing", "pending"]
     score: int | None = None
     created_at: str

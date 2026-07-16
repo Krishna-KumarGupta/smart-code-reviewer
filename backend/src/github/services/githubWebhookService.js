@@ -106,21 +106,8 @@ export const handlePullRequestEvent = async (payload, deliveryId = null, eventTy
     await redis.set(`webhook_delivery:${deliveryId}`, 'true', 'EX', 86400); // 24 hours lock
   }
 
-  // ── Step 8: Persist the initial 'pending' review state to the database ───
-  const reviewId = await PersistenceService.createReview({
-    userId: repository.user_id,
-    repositoryId: repository.id,
-    prNumber: cleanPayload.pullRequest.number,
-    prTitle: cleanPayload.pullRequest.title,
-    prUrl: cleanPayload.pullRequest.html_url,
-    prAuthor: cleanPayload.pullRequest.author,
-    baseBranch: cleanPayload.pullRequest.base_ref,
-    headBranch: cleanPayload.pullRequest.head_ref || 'main',
-  });
-
   // ── Step 9: Construct unified review job payload ─────────────────────────
   const jobPayload = {
-    reviewId,
     userId: repository.user_id,
     repositoryId: repository.id,
     installation_id: cleanPayload.installation?.id || repository.installation_id || null,
@@ -128,6 +115,7 @@ export const handlePullRequestEvent = async (payload, deliveryId = null, eventTy
     owner: cleanPayload.repository.owner,
     repo: cleanPayload.repository.name,
     repository_full_name: cleanPayload.repository.full_name,
+    pullNumber: cleanPayload.pullRequest.number,
     pull_number: cleanPayload.pullRequest.number,
     pull_request_id: cleanPayload.pullRequest.id,
     pull_request_url: cleanPayload.pullRequest.html_url,
@@ -146,7 +134,6 @@ export const handlePullRequestEvent = async (payload, deliveryId = null, eventTy
   return {
     handled: true,
     message: 'Review queued',
-    reviewId,
   };
 };
 
