@@ -122,59 +122,66 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
             content={"success": False, "error": "Invalid JSON body"},
         )
 
-    # ── 3. Handle ping ─────────────────────────────────────────────────────
-    if event_type == "ping":
-        return JSONResponse(
-            status_code=200,
-            content={"success": True, "handled": True, "message": "pong"},
-        )
-
-    # ── 4. Handle pull_request ─────────────────────────────────────────────
-    if event_type == "pull_request":
-        pr_ctx = extract_pr_context(payload)
-        if pr_ctx is None:
+    try:
+        # ── 3. Handle ping ─────────────────────────────────────────────────────
+        if event_type == "ping":
             return JSONResponse(
                 status_code=200,
-                content={"success": True, "handled": False, "reason": "ignored_action"},
+                content={"success": True, "handled": True, "message": "pong"},
             )
 
-        # Persist a queued record, then enqueue the BackgroundTask
-        review_id = str(uuid.uuid4())
-        async with get_session() as session:
-            review = Review(
-                id=review_id,
+        # ── 4. Handle pull_request ─────────────────────────────────────────────
+        if event_type == "pull_request":
+            pr_ctx = extract_pr_context(payload)
+            if pr_ctx is None:
+                return JSONResponse(
+                    status_code=200,
+                    content={"success": True, "handled": False, "reason": "ignored_action"},
+                )
+
+            # Persist a queued record, then enqueue the BackgroundTask
+            review_id = str(uuid.uuid4())
+            async with get_session() as session:
+                review = Review(
+                    id=review_id,
+                    repo_url=pr_ctx["repo_url"],
+                    pr_number=pr_ctx["pull_number"],
+                    user_id="webhook",      # Webhook has no user context
+                    user_email="webhook@github.com",
+                    status="queued",
+                )
+                session.add(review)
+
+            _enqueue_pipeline(
+                background_tasks=background_tasks,
+                review_id=review_id,
                 repo_url=pr_ctx["repo_url"],
                 pr_number=pr_ctx["pull_number"],
-                user_id="webhook",      # Webhook has no user context
+                clone_url=pr_ctx["clone_url"],
+                base_sha=pr_ctx["base_sha"],
+                head_sha=pr_ctx["head_sha"],
+                user_id="webhook",
                 user_email="webhook@github.com",
-                status="queued",
+                github_token=None,
             )
-            session.add(review)
 
-        _enqueue_pipeline(
-            background_tasks=background_tasks,
-            review_id=review_id,
-            repo_url=pr_ctx["repo_url"],
-            pr_number=pr_ctx["pull_number"],
-            clone_url=pr_ctx["clone_url"],
-            base_sha=pr_ctx["base_sha"],
-            head_sha=pr_ctx["head_sha"],
-            user_id="webhook",
-            user_email="webhook@github.com",
-            github_token=None,
-        )
+            logger.info("[webhook] Enqueued review_id=%s for PR #%s", review_id, pr_ctx["pull_number"])
+            return JSONResponse(
+                status_code=status.HTTP_202_ACCEPTED,
+                content={"success": True, "handled": True, "review_id": review_id},
+            )
 
-        logger.info("[webhook] Enqueued review_id=%s for PR #%s", review_id, pr_ctx["pull_number"])
+        # ── 5. Unsupported event ───────────────────────────────────────────────
         return JSONResponse(
-            status_code=status.HTTP_202_ACCEPTED,
-            content={"success": True, "handled": True, "review_id": review_id},
+            status_code=200,
+            content={"success": True, "handled": False, "reason": f"unsupported_event:{event_type}"},
         )
-
-    # ── 5. Unsupported event ───────────────────────────────────────────────
-    return JSONResponse(
-        status_code=200,
-        content={"success": True, "handled": False, "reason": f"unsupported_event:{event_type}"},
-    )
+    except Exception as exc:
+        logger.exception("[webhook] Error processing webhook event: %s", exc)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"Error processing webhook: {str(exc)}"},
+        )
 
 
 # ─── Reviews — service-key protected ─────────────────────────────────────────

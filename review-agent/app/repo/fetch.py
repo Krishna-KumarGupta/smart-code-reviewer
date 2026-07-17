@@ -168,10 +168,12 @@ async def blobless_clone(clone_url: str, base_sha: str, head_sha: str, github_to
     """
     tmpdir = tempfile.mkdtemp(prefix="review-agent-clone-")
     
+    masked_url = clone_url
     if github_token:
+        masked_url = clone_url.replace("https://github.com/", f"https://x-access-token:******@github.com/")
         clone_url = clone_url.replace("https://github.com/", f"https://x-access-token:{github_token}@github.com/")
         
-    logger.info("[fetch] Cloning %s into %s", clone_url.replace(github_token or "SECRET", "TOKEN"), tmpdir)
+    logger.info("[fetch] Cloning %s into %s", masked_url, tmpdir)
 
     try:
         # Step 1 — blobless, depth-1, no checkout
