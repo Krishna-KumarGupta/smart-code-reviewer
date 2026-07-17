@@ -83,6 +83,7 @@ class LLMReviewClient:
             improvements: List of improvement suggestion strings.
             findings:     List of LLMFinding objects.
         """
+        settings = get_settings()
         lint_summary = _build_lint_summary(lint_findings)
         circular_summary = _build_circular_summary(circular_findings, diff_files)
 
@@ -91,9 +92,19 @@ class LLMReviewClient:
             impact_slices=impact_slices_text,
             lint_summary=lint_summary,
             circular_summary=circular_summary,
+            max_tokens=settings.impact_slice_max_tokens,
+            system_prompt=SYSTEM_PROMPT,
         )
 
-        logger.info("[llm_client] Calling %s for code review", self._model)
+        from app.slicing.budget import count_tokens
+        total_prompt_tokens = count_tokens(SYSTEM_PROMPT) + count_tokens(user_message)
+
+        logger.info(
+            "[llm_client] Calling %s for code review — total prompt tokens: %d (max_tokens limit: %d)",
+            self._model,
+            total_prompt_tokens,
+            settings.impact_slice_max_tokens,
+        )
 
         response = self._client.chat.completions.create(
             model=self._model,

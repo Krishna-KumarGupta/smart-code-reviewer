@@ -23,11 +23,14 @@ if (!SERVICE_API_KEY) {
  * @returns {object} headers object
  */
 export function makeReviewAgentHeaders(user, role = null) {
+  const userId = user ? (user.id || user.user_id || user.sub || '') : '';
+  const userEmail = user ? (user.email || user.user_email || '') : '';
+
   const headers = {
     'Content-Type':      'application/json',
     'X-Service-Api-Key': SERVICE_API_KEY,
-    'X-User-Id':         user.id,
-    'X-User-Email':      user.email,
+    'X-User-Id':         userId,
+    'X-User-Email':      userEmail,
   };
   if (role) {
     headers['X-User-Role'] = role;
