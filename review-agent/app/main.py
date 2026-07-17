@@ -160,6 +160,7 @@ async def github_webhook(request: Request) -> Response:
             head_sha=pr_ctx["head_sha"],
             user_id="webhook",
             user_email="webhook@github.com",
+            github_token=None,
         )
 
         logger.info("[webhook] Enqueued review_id=%s for PR #%s", review_id, pr_ctx["pull_number"])
@@ -196,24 +197,35 @@ async def trigger_review(
 
     Returns a review_id that can be polled via GET /reviews/{review_id}.
     """
-    review_id = str(uuid.uuid4())
+    review_id = body.review_id if body.review_id else str(uuid.uuid4())
 
     async with get_session() as session:
-        review = Review(
-            id=review_id,
-            repo_url=body.repo_url,
-            pr_number=body.pr_number,
-            user_id=ctx.user_id,
-            user_email=ctx.user_email,
-            status="queued",
-        )
-        session.add(review)
+        review = await session.get(Review, review_id)
+        if review:
+            review.repo_url = body.repo_url
+            review.pr_number = body.pr_number
+            review.user_id = ctx.user_id
+            review.user_email = ctx.user_email
+            review.status = "queued"
+            review.error = None
+            review.report_json = None
+        else:
+            review = Review(
+                id=review_id,
+                repo_url=body.repo_url,
+                pr_number=body.pr_number,
+                user_id=ctx.user_id,
+                user_email=ctx.user_email,
+                status="queued",
+            )
+            session.add(review)
 
     # Extract clone URL and SHAs via GitHub API
     try:
         from app.github.client import GitHubClient
         owner, repo_name = _parse_owner_repo(body.repo_url)
-        async with GitHubClient() as gh:
+        logger.info("[reviews] Calling GitHubClient for %s/%s PR#%s. Token provided: %s", owner, repo_name, body.pr_number, bool(body.github_token))
+        async with GitHubClient(token=body.github_token) as gh:
             pr_info = await gh.get_pr_info(owner, repo_name, body.pr_number)
             repo_info = await gh.get_repo_info(owner, repo_name)
 
@@ -241,6 +253,7 @@ async def trigger_review(
         head_sha=head_sha,
         user_id=ctx.user_id,
         user_email=ctx.user_email,
+        github_token=body.github_token,
     )
 
     logger.info("[reviews] Enqueued review_id=%s for %s PR#%s by %s",
