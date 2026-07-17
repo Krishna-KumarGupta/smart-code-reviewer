@@ -159,7 +159,7 @@ async def _run_git(args: list[str], cwd: str | None = None) -> str:
     return stdout.decode(errors="replace").strip()
 
 
-async def blobless_clone(clone_url: str, base_sha: str, head_sha: str) -> str:
+async def blobless_clone(clone_url: str, base_sha: str, head_sha: str, github_token: str | None = None) -> str:
     """
     Perform a blobless shallow clone and check out head_sha.
 
@@ -167,7 +167,11 @@ async def blobless_clone(clone_url: str, base_sha: str, head_sha: str) -> str:
     Raises RuntimeError on git failures.
     """
     tmpdir = tempfile.mkdtemp(prefix="review-agent-clone-")
-    logger.info("[fetch] Cloning %s into %s", clone_url, tmpdir)
+    
+    if github_token:
+        clone_url = clone_url.replace("https://github.com/", f"https://x-access-token:{github_token}@github.com/")
+        
+    logger.info("[fetch] Cloning %s into %s", clone_url.replace(github_token or "SECRET", "TOKEN"), tmpdir)
 
     try:
         # Step 1 — blobless, depth-1, no checkout

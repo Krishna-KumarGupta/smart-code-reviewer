@@ -21,7 +21,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status, BackgroundTasks
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
@@ -90,14 +90,14 @@ async def health() -> dict:
 # ─── GitHub webhook ──────────────────────────────────────────────────────────
 
 @app.post("/webhook/github", tags=["webhook"])
-async def github_webhook(request: Request) -> Response:
+async def github_webhook(request: Request, background_tasks: BackgroundTasks) -> Response:
     """
     Receive GitHub webhook events.
 
     Public endpoint — authenticated exclusively via X-Hub-Signature-256 HMAC.
     NOT protected by X-Service-Api-Key (GitHub calls this directly).
 
-    Returns 202 within 2s; heavy work is enqueued to Celery.
+    Returns 202 within 2s; heavy work is enqueued to BackgroundTasks.
     """
     raw_body = await request.body()
     signature = request.headers.get("x-hub-signature-256")
@@ -138,7 +138,7 @@ async def github_webhook(request: Request) -> Response:
                 content={"success": True, "handled": False, "reason": "ignored_action"},
             )
 
-        # Persist a queued record, then enqueue the Celery task
+        # Persist a queued record, then enqueue the BackgroundTask
         review_id = str(uuid.uuid4())
         async with get_session() as session:
             review = Review(
@@ -152,6 +152,7 @@ async def github_webhook(request: Request) -> Response:
             session.add(review)
 
         _enqueue_pipeline(
+            background_tasks=background_tasks,
             review_id=review_id,
             repo_url=pr_ctx["repo_url"],
             pr_number=pr_ctx["pull_number"],
@@ -186,6 +187,7 @@ async def github_webhook(request: Request) -> Response:
 )
 async def trigger_review(
     body: TriggerReviewRequest,
+    background_tasks: BackgroundTasks,
     ctx: RequestContext = Depends(verify_service_call),
 ) -> TriggerReviewResponse:
     """
@@ -245,6 +247,7 @@ async def trigger_review(
         )
 
     _enqueue_pipeline(
+        background_tasks=background_tasks,
         review_id=review_id,
         repo_url=body.repo_url,
         pr_number=body.pr_number,
@@ -340,10 +343,10 @@ async def list_reviews(
 
 # ─── Private helpers ──────────────────────────────────────────────────────────
 
-def _enqueue_pipeline(**kwargs) -> None:
-    """Send the pipeline task to Celery (import here to avoid circular imports)."""
-    from app.tasks import run_review_pipeline
-    run_review_pipeline.delay(**kwargs)
+def _enqueue_pipeline(background_tasks: BackgroundTasks, **kwargs) -> None:
+    """Send the pipeline task to BackgroundTasks (import here to avoid circular imports)."""
+    from app.tasks import run_review_pipeline_async
+    background_tasks.add_task(run_review_pipeline_async, **kwargs)
 
 
 def _parse_owner_repo(repo_url: str) -> tuple[str, str]:
