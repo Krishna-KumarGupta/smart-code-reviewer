@@ -76,9 +76,13 @@ const ReviewRow = ({ review, index }) => {
             </span>
           </div>
 
-          {/* PR title */}
           <p className="text-sm font-semibold text-text-primary truncate">
-            PR #{review.pr_number}{review.pr_title ? ` · ${review.pr_title}` : ''}
+            PR #{review.pr_number}
+            {review.pr_title && 
+             review.pr_title !== `PR #${review.pr_number}` && 
+             review.pr_title !== `${review.pr_number}` 
+              ? ` · ${review.pr_title}` 
+              : ''}
           </p>
 
           {/* Timestamp */}
