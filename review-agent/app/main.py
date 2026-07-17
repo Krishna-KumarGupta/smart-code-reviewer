@@ -177,10 +177,10 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
             content={"success": True, "handled": False, "reason": f"unsupported_event:{event_type}"},
         )
     except Exception as exc:
-        logger.exception("[webhook] Error processing webhook event: %s", exc)
+        logger.exception("[webhook] Critical failure processing GitHub webhook (event=%s)", event_type)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"success": False, "error": f"Error processing webhook: {str(exc)}"},
+            content={"success": False, "error": f"Internal server error processing webhook: {str(exc)}"},
         )
 
 
@@ -242,15 +242,16 @@ async def trigger_review(
         head_sha = pr_info["head"]["sha"]
         base_sha = pr_info["base"]["sha"]
     except Exception as exc:
-        logger.error("[reviews] Failed to fetch PR info: %s", exc)
+        logger.exception("[reviews] Failed to fetch PR info from GitHub API for %s/%s PR #%s", owner, repo_name, body.pr_number)
+        error_msg = f"GitHub API error: {str(exc)}"
         async with get_session() as session:
             review = await session.get(Review, review_id)
             if review:
                 review.status = "failed"
-                review.error = str(exc)
+                review.error = error_msg
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={"success": False, "error": f"Failed to fetch PR info: {exc}", "code": "GITHUB_API_ERROR"},
+            detail={"success": False, "error": error_msg, "code": "GITHUB_API_ERROR"},
         )
 
     _enqueue_pipeline(
