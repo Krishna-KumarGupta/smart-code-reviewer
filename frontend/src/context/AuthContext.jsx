@@ -28,7 +28,8 @@
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 
-import supabase from '../services/supabase.js';
+import supabase         from '../services/supabase.js';
+import githubService   from '../services/githubService.js';
 
 // ─── Create Context ────────────────────────────────────────────────────────────
 export const AuthContext = createContext(null);
@@ -39,6 +40,11 @@ export const AuthProvider = ({ children }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
+
+  // ─── GitHub Connection State ─────────────────────────────────────────────
+  const [githubConnected, setGithubConnected] = useState(false);
+  const [githubUsername,  setGithubUsername]  = useState(null);
+  const [githubAvatar,    setGithubAvatar]    = useState(null);
 
   // ─── Fetch Profile Row ────────────────────────────────────────────────────
   /**
@@ -74,12 +80,29 @@ export const AuthProvider = ({ children }) => {
 
         if (mounted && session?.user) {
           setUser(session.user);
-          const profileData = await fetchProfile(session.user.id);
-          if (mounted) setProfile(profileData);
+
+          // Fetch profile and GitHub status in parallel — both must complete
+          // before we drop the loading screen. This prevents the UI from
+          // briefly flashing "Not connected" when the user IS connected.
+          const [profileData, ghStatus] = await Promise.all([
+            fetchProfile(session.user.id),
+            githubService.status().catch(() => null), // non-fatal
+          ]);
+
+          if (mounted) {
+            setProfile(profileData);
+            if (ghStatus) {
+              setGithubConnected(ghStatus.connected);
+              setGithubUsername(ghStatus.username);
+              setGithubAvatar(ghStatus.avatar);
+            }
+          }
         }
       } catch (err) {
         console.error('[AuthContext] Session restore error:', err.message);
       } finally {
+        // Drop loading screen only after ALL state (including GitHub status)
+        // has been populated. This is the single source of truth for loading.
         if (mounted) setLoading(false);
       }
     };
@@ -87,21 +110,45 @@ export const AuthProvider = ({ children }) => {
     initSession();
 
     // ─── Listen for Auth State Changes ────────────────────────────────────
+    // This listener handles events that happen AFTER the initial session
+    // restore: SIGNED_IN (new login), SIGNED_OUT, TOKEN_REFRESHED, etc.
+    // INITIAL_SESSION is intentionally NOT handled here — initSession()
+    // above already fetches user, profile, and GitHub status for that case,
+    // and calling setLoading(false) from inside an async Supabase callback
+    // (which Supabase does not await) is unreliable.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
+
+        // Skip INITIAL_SESSION — already handled by initSession() above.
+        // Processing it here would create a duplicate network request race.
+        if (event === 'INITIAL_SESSION') return;
 
         if (session?.user) {
           setUser(session.user);
           const profileData = await fetchProfile(session.user.id);
           if (mounted) setProfile(profileData);
+
+          // On a fresh SIGNED_IN event, fetch GitHub status so the UI
+          // reflects the correct connected state without a page refresh.
+          if (event === 'SIGNED_IN') {
+            try {
+              const ghStatus = await githubService.status();
+              if (mounted) {
+                setGithubConnected(ghStatus.connected);
+                setGithubUsername(ghStatus.username);
+                setGithubAvatar(ghStatus.avatar);
+              }
+            } catch {
+              // Non-fatal — user simply hasn't connected GitHub yet
+            }
+          }
         } else {
           setUser(null);
           setProfile(null);
-        }
-
-        if (event === 'INITIAL_SESSION') {
-          setLoading(false);
+          setGithubConnected(false);
+          setGithubUsername(null);
+          setGithubAvatar(null);
         }
       }
     );
@@ -111,6 +158,7 @@ export const AuthProvider = ({ children }) => {
       subscription.unsubscribe();
     };
   }, [fetchProfile]);
+
 
   // ─── Login ────────────────────────────────────────────────────────────────
   const login = async (email, password) => {
@@ -248,6 +296,27 @@ export const AuthProvider = ({ children }) => {
     return profileData;
   }, [user, fetchProfile]);
 
+  // ─── refreshGitHubStatus ──────────────────────────────────────────────────
+  /**
+   * Re-fetch the GitHub connection status from the backend and update state.
+   * Call this after a successful GitHub connect or disconnect.
+   *
+   * @returns {Promise<{ connected: boolean, username: string|null, avatar: string|null }|null>}
+   */
+  const refreshGitHubStatus = useCallback(async () => {
+    if (!user?.id) return null;
+    try {
+      const status = await githubService.status();
+      setGithubConnected(status.connected);
+      setGithubUsername(status.username);
+      setGithubAvatar(status.avatar);
+      return status;
+    } catch (err) {
+      console.error('[AuthContext] refreshGitHubStatus error:', err.message);
+      return null;
+    }
+  }, [user]);
+
   // ─── updateProfile ────────────────────────────────────────────────────────
   /**
    * Update allowed profile fields (full_name, avatar_url, github_username)
@@ -301,7 +370,12 @@ export const AuthProvider = ({ children }) => {
     // Computed
     isAuthenticated: !!user,
     isAdmin: profile?.role === 'admin',
-    isUser: profile?.role === 'user',
+    isUser:  profile?.role === 'user',
+
+    // GitHub State
+    githubConnected,
+    githubUsername,
+    githubAvatar,
 
     // Auth Actions
     login,
@@ -313,6 +387,9 @@ export const AuthProvider = ({ children }) => {
     // Profile Actions
     refreshProfile,
     updateProfile,
+
+    // GitHub Actions
+    refreshGitHubStatus,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

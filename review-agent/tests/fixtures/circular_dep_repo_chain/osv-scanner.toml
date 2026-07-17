@@ -1,0 +1,17 @@
+﻿# osv-scanner.toml — intentionally vulnerable test fixture
+#
+# This directory is a DELIBERATE test fixture for review-agent's pytest suite.
+# Its requirements.txt / package manifests contain known-vulnerable packages
+# BY DESIGN so tests can exercise the OSV parser and scorer logic.
+#
+# [[PackageOverrides]] ignore=true tells OSV-Scanner to skip all packages
+# found in this directory, suppressing false findings when the
+# smart-code-reviewer repo itself is scanned.
+#
+# This config has NO effect on the pytest suite: tests invoke osv-scanner
+# against this path as the *scan target* (simulating a user's repo), never
+# as part of scanning smart-code-reviewer's own dependency tree.
+
+[[PackageOverrides]]
+ignore = true
+reason = "Deliberate test fixture — intentionally vulnerable packages for pytest suite. Not real project dependencies."

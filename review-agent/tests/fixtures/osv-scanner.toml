@@ -1,0 +1,27 @@
+﻿# osv-scanner.toml — OSV-Scanner configuration for tests/fixtures/
+#
+# This directory contains DELIBERATELY VULNERABLE packages used as test
+# fixtures for review-agent's pytest suite (e.g. requests==2.19.1 in
+# vuln_repo/ is intentionally pinned to a CVE-affected version so that
+# test_osv_parser.py can exercise the parser against a real finding).
+#
+# When OSV-Scanner scans the smart-code-reviewer repo itself it recurses
+# into this directory and reports 36+ findings that are NOT real project
+# vulnerabilities — just fixture data.
+#
+# Solution: place this config file here so OSV-Scanner ignores all packages
+# found in this directory tree.  Per the OSV-Scanner v2 config docs:
+#   "To configure scanning, place an osv-scanner.toml file in the scanned
+#    file's directory."
+# An osv-scanner.toml in tests/fixtures/ applies to every manifest file
+# (requirements.txt, package.json, etc.) that lives directly under it OR
+# in its subdirectories when scanned with -r.
+#
+# NOTE: This file has NO effect on the pytest suite — tests reference the
+# fixture paths directly via Python's pathlib and do not invoke osv-scanner
+# on the smart-code-reviewer repo tree at all.  The fixture requirements.txt
+# files remain untouched and fully usable by the tests.
+
+[[PackageOverrides]]
+ignore = true
+reason = "Deliberate test fixture — intentionally vulnerable packages used by pytest suite (test_osv_parser.py, test_scorer.py, etc.). Not real project dependencies."

@@ -8,10 +8,12 @@
  *
  *  ProtectedRoute        (auth guard — redirects to / if not logged in)
  *   └─ DashboardLayout   (Navbar + Sidebar + Outlet shell)
- *       ├─ /home         → HomePage
- *       ├─ /history      → HistoryPage
- *       ├─ /repos        → RepositoriesPage
- *       └─ /settings     → SettingsPage
+ *       ├─ /home           → HomePage
+ *       ├─ /history        → HistoryPage
+ *       ├─ /history/report → AIReviewReportPage   (new — ?reviewId=<uuid>)
+ *       ├─ /reviews/:id    → ReviewReportPage
+ *       ├─ /repos          → RepositoriesPage
+ *       └─ /settings       → SettingsPage
  *
  *  AdminRoute            (auth + admin role guard — redirects to /home if not admin)
  *   └─ DashboardLayout
@@ -33,9 +35,11 @@ import AuthPage           from './pages/AuthPage.jsx';
 import ResetPasswordPage  from './pages/ResetPasswordPage.jsx';
 import HomePage           from './pages/HomePage.jsx';
 import HistoryPage        from './pages/HistoryPage.jsx';
+import AIReviewReportPage from './pages/AIReviewReportPage.jsx';
 import AdminPage          from './pages/AdminPage.jsx';
 import RepositoriesPage   from './pages/RepositoriesPage.jsx';
 import SettingsPage       from './pages/SettingsPage.jsx';
+import GitHubSettingsPage from './pages/GitHubSettingsPage.jsx';
 import NotFoundPage       from './pages/NotFoundPage.jsx';
 
 // ─── Toast Config ─────────────────────────────────────────────────────────────
@@ -74,10 +78,13 @@ const App = () => {
             {/* ── Protected: any authenticated user ───────────────────── */}
             <Route element={<ProtectedRoute />}>
               <Route element={<DashboardLayout />}>
-                <Route path="/home"     element={<HomePage />} />
-                <Route path="/history"  element={<HistoryPage />} />
-                <Route path="/repos"    element={<RepositoriesPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/home"               element={<HomePage />} />
+                <Route path="/history"            element={<HistoryPage />} />
+                <Route path="/history/report"     element={<AIReviewReportPage />} />
+                <Route path="/reviews/:reviewId"  element={<AIReviewReportPage />} />
+                <Route path="/repos"              element={<RepositoriesPage />} />
+                <Route path="/settings"           element={<SettingsPage />} />
+                <Route path="/settings/github"    element={<GitHubSettingsPage />} />
               </Route>
             </Route>
 

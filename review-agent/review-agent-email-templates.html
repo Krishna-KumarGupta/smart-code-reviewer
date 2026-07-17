@@ -1,0 +1,211 @@
+<!--
+  review-agent email templates
+  ============================
+  Two templates below: SUCCESS and FAILURE. Both use inline CSS (required for
+  broad email client compatibility — most clients strip <style> blocks or
+  ignore external stylesheets). Variables to interpolate are wrapped in
+  {{double_braces}} — replace with your templating approach (Jinja2, simple
+  str.format, etc.) in email_client.py.
+
+  Always send a text/plain alternative alongside this HTML (see bottom).
+-->
+
+<!-- ============================================================ -->
+<!-- TEMPLATE 1: SUCCESS -->
+<!-- ============================================================ -->
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0; padding:0; background-color:#f4f5f7; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px; background-color:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding:28px 32px 20px 32px; border-bottom:1px solid #eef0f2;">
+              <p style="margin:0; font-size:13px; color:#6b7280; letter-spacing:0.02em; text-transform:uppercase;">Code Review Complete</p>
+              <p style="margin:6px 0 0 0; font-size:18px; font-weight:600; color:#111827;">{{repo_name}} · PR #{{pr_number}}</p>
+            </td>
+          </tr>
+
+          <!-- Score badge -->
+          <tr>
+            <td style="padding:28px 32px 8px 32px; text-align:center;">
+              <!--
+                Color logic (interpolate the badge color server-side):
+                score >= 80  -> #16a34a (green)
+                score 50-79  -> #d97706 (amber)
+                score < 50   -> #dc2626 (red)
+              -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+                <tr>
+                  <td style="width:88px; height:88px; border-radius:50%; background-color:{{score_color}}; text-align:center; vertical-align:middle;">
+                    <span style="display:inline-block; line-height:88px; font-size:32px; font-weight:700; color:#ffffff;">{{score}}</span>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:12px 0 0 0; font-size:13px; color:#6b7280;">out of 100</p>
+            </td>
+          </tr>
+
+          <!-- Review excerpt -->
+          <tr>
+            <td style="padding:12px 32px 4px 32px;">
+              <p style="margin:0; font-size:14px; line-height:1.6; color:#374151;">{{review_excerpt}}</p>
+            </td>
+          </tr>
+
+          <!-- Top findings -->
+          <tr>
+            <td style="padding:20px 32px 0 32px;">
+              <p style="margin:0 0 10px 0; font-size:12px; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:0.03em;">
+                Top findings ({{finding_count}} total)
+              </p>
+
+              <!-- Repeat this block per finding, max 3-5 -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px; border-left:3px solid {{severity_color}}; background-color:#f9fafb; border-radius:4px;">
+                <tr>
+                  <td style="padding:10px 14px;">
+                    <p style="margin:0; font-size:12px; font-weight:600; color:{{severity_color}}; text-transform:uppercase;">{{severity}}</p>
+                    <p style="margin:4px 0 0 0; font-size:13px; color:#111827; font-family:'SF Mono', Consolas, monospace;">{{file}}{{line_suffix}}</p>
+                    <p style="margin:4px 0 0 0; font-size:13px; color:#4b5563; line-height:1.5;">{{finding_description}}</p>
+                  </td>
+                </tr>
+              </table>
+              <!-- end repeat -->
+
+            </td>
+          </tr>
+
+          <!-- CTA -->
+          <tr>
+            <td style="padding:24px 32px 8px 32px; text-align:center;">
+              <a href="{{review_url}}" style="display:inline-block; background-color:#111827; color:#ffffff; text-decoration:none; font-size:14px; font-weight:600; padding:12px 28px; border-radius:8px;">
+                View full report →
+              </a>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:24px 32px 28px 32px; border-top:1px solid #eef0f2; margin-top:20px;">
+              <p style="margin:0; font-size:12px; color:#9ca3af; line-height:1.5;">
+                This review was generated automatically by review-agent.
+                Reviewed at {{completed_at}}.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+
+
+<!-- ============================================================ -->
+<!-- TEMPLATE 2: FAILURE -->
+<!-- ============================================================ -->
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0; padding:0; background-color:#f4f5f7; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px; background-color:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+
+          <tr>
+            <td style="padding:28px 32px 20px 32px; border-bottom:1px solid #eef0f2;">
+              <p style="margin:0; font-size:13px; color:#dc2626; letter-spacing:0.02em; text-transform:uppercase; font-weight:600;">Review Failed</p>
+              <p style="margin:6px 0 0 0; font-size:18px; font-weight:600; color:#111827;">{{repo_name}} · PR #{{pr_number}}</p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 8px 32px;">
+              <p style="margin:0 0 12px 0; font-size:14px; color:#374151; line-height:1.6;">
+                The automated review for this pull request could not be completed.
+              </p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef2f2; border-left:3px solid #dc2626; border-radius:4px;">
+                <tr>
+                  <td style="padding:12px 14px;">
+                    <p style="margin:0; font-size:13px; color:#991b1b; font-family:'SF Mono', Consolas, monospace; line-height:1.5;">{{error_message}}</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 8px 32px; text-align:center;">
+              <a href="{{review_url}}" style="display:inline-block; background-color:#111827; color:#ffffff; text-decoration:none; font-size:14px; font-weight:600; padding:12px 28px; border-radius:8px;">
+                View details →
+              </a>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 28px 32px; border-top:1px solid #eef0f2; margin-top:20px;">
+              <p style="margin:0; font-size:12px; color:#9ca3af; line-height:1.5;">
+                If this keeps happening, check that the repository and PR are accessible and try again.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+
+
+<!-- ============================================================ -->
+<!-- PLAIN-TEXT FALLBACKS (required alongside the HTML above) -->
+<!-- ============================================================ -->
+
+<!--
+SUCCESS plain-text version:
+
+Code review complete: {{repo_name}} PR #{{pr_number}}
+Score: {{score}}/100
+
+{{review_excerpt}}
+
+Top findings ({{finding_count}} total):
+{{#each findings}}
+- [{{severity}}] {{file}}{{line_suffix}}: {{finding_description}}
+{{/each}}
+
+View the full report: {{review_url}}
+
+---
+This review was generated automatically by review-agent.
+Reviewed at {{completed_at}}.
+
+
+FAILURE plain-text version:
+
+Review failed: {{repo_name}} PR #{{pr_number}}
+
+The automated review for this pull request could not be completed.
+
+Error: {{error_message}}
+
+View details: {{review_url}}
+
+---
+If this keeps happening, check that the repository and PR are accessible and try again.
+-->

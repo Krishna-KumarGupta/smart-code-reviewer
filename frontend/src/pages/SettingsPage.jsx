@@ -7,15 +7,18 @@
  */
 
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import {
   RiSettingsLine,
   RiUserLine,
   RiNotificationLine,
   RiGithubLine,
   RiShieldKeyholeLine,
+  RiArrowRightLine,
 } from 'react-icons/ri';
 import useAuth from '../hooks/useAuth.js';
 import Card from '../components/ui/Card.jsx';
+import GitHubStatus from '../components/github/GitHubStatus.jsx';
 
 // ─── Settings Section Card ────────────────────────────────────────────────────
 const SettingSection = ({ icon, title, description, badge, delay }) => (
@@ -52,7 +55,7 @@ const SettingSection = ({ icon, title, description, badge, delay }) => (
 );
 
 const SettingsPage = () => {
-  const { profile } = useAuth();
+  const { profile, githubConnected, githubUsername } = useAuth();
 
   return (
     <div className="min-h-full">
@@ -120,13 +123,45 @@ const SettingsPage = () => {
             badge="Coming soon"
             delay={0.15}
           />
-          <SettingSection
-            icon={<RiGithubLine />}
-            title="GitHub Integration"
-            description="Connect your GitHub account and manage installed repositories."
-            badge="Phase 2"
-            delay={0.2}
-          />
+
+          {/* GitHub Integration — Live section */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.4 }}
+          >
+            <Card glass>
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-surface-2 border border-border flex items-center justify-center text-lg text-text-muted shrink-0">
+                  <RiGithubLine />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-sm font-semibold text-text-primary">GitHub Integration</h3>
+                  </div>
+                  <GitHubStatus
+                    connected={githubConnected}
+                    username={githubUsername}
+                    size="sm"
+                  />
+                </div>
+                <Link
+                  to="/settings/github"
+                  className="
+                    inline-flex items-center gap-1.5
+                    px-3 py-1.5 rounded-lg
+                    bg-primary/10 border border-primary/20
+                    text-xs font-medium text-primary
+                    hover:bg-primary/20 hover:border-primary/40
+                    transition-all duration-200
+                  "
+                >
+                  {githubConnected ? 'Manage' : 'Connect'}
+                  <RiArrowRightLine className="text-xs" />
+                </Link>
+              </div>
+            </Card>
+          </motion.div>
           <SettingSection
             icon={<RiShieldKeyholeLine />}
             title="Security"

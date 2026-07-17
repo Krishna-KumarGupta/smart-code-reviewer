@@ -1,0 +1,131 @@
+# =============================================================================
+# Smart Code Reviewer — Root docker-compose.yml
+# =============================================================================
+# Brings up all services together:
+#   frontend     — Vite dev server  (port 5173)
+#   backend      — Node/Express API (port 5000)
+#   redis        — Celery broker / result backend
+#   review-agent — FastAPI service  (port 5050) [INTERNAL ONLY]
+#   celery-worker— Celery worker for the review pipeline
+#
+# Network: all services share `scr-network` (internal Docker bridge).
+# review-agent and celery-worker are intentionally NOT published on host ports
+# beyond the port mapping here — in production remove the port mapping for
+# review-agent and access it only via the internal network from backend.
+#
+# Setup:
+#   1. Copy each service's .env.example to .env and fill in values.
+#   2. docker-compose up --build
+# =============================================================================
+
+version: "3.9"
+
+networks:
+  scr-network:
+    driver: bridge
+
+services:
+
+  # ─── Frontend (Vite + React) ───────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    env_file:
+      - ./frontend/.env
+    networks:
+      - scr-network
+    depends_on:
+      - backend
+    # Only build if a Dockerfile exists; fall back to dev server otherwise
+    profiles:
+      - full
+
+  # ─── Backend (Node/Express) ────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Point backend at the internal review-agent service
+      REVIEW_AGENT_URL: http://review-agent:5050
+    networks:
+      - scr-network
+    depends_on:
+      - redis
+      - review-agent
+
+  # ─── Redis (Celery broker) ─────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - scr-network
+    ports:
+      - "6379:6379"       # Expose for local dev debugging; remove in production
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── review-agent (FastAPI — INTERNAL ONLY) ───────────────────────────────
+  # WARNING: In production, remove the `ports` mapping below.
+  # This service must be reachable ONLY from `backend` via the scr-network.
+  # The X-Service-Api-Key check is defense-in-depth, not a substitute for
+  # network isolation. See review-agent/README.md §Network Posture.
+  review-agent:
+    build:
+      context: ./review-agent
+      dockerfile: Dockerfile
+    # Port published to host for local dev only — REMOVE in production
+    ports:
+      - "5050:5050"
+    env_file:
+      - ./review-agent/.env
+    environment:
+      PORT: 5050
+    networks:
+      - scr-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5050/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ─── Celery Worker ────────────────────────────────────────────────────────
+  # Same image as review-agent, different command.
+  celery-worker:
+    build:
+      context: ./review-agent
+      dockerfile: Dockerfile
+    command: >
+      celery -A app.celery_app worker
+      --loglevel=info
+      --concurrency=2
+      --queues=celery
+    env_file:
+      - ./review-agent/.env
+    networks:
+      - scr-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      review-agent:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis-data:
