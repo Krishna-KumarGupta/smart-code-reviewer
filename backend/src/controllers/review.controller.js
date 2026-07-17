@@ -54,6 +54,7 @@ export class ReviewController {
 
       // 2. Fetch Pull Request details from GitHub to verify and get SHAs
       const token = await getValidAccessToken(userId);
+      console.log('[Review Controller] GitHub token available:', !!token);
       const metadata = await getPullRequestMetadata(owner, repo, parseInt(pullNumber, 10), token);
 
       if (!metadata) {
