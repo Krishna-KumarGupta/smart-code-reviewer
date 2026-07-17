@@ -22,7 +22,6 @@
 
 import { supabaseAdmin } from '../../config/supabase.js';
 import { PersistenceService } from '../../services/persistence.service.js';
-import { analyzePrTask } from '../../tasks/analyzePrTask.js';
 import Redis from 'ioredis';
 
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
@@ -157,24 +156,24 @@ const extractPullRequestPayload = (payload) => {
 
   return {
     repository: {
-      id:        repository?.id,
+      id: repository?.id,
       full_name: repository?.full_name,
-      name:      repository?.name,
-      owner:     repository?.owner?.login,
+      name: repository?.name,
+      owner: repository?.owner?.login,
     },
     pullRequest: {
-      id:        pull_request?.id,
-      number:    pull_request?.number,
-      title:     pull_request?.title,
-      state:     pull_request?.state,
-      html_url:  pull_request?.html_url,
-      diff_url:  pull_request?.diff_url,
+      id: pull_request?.id,
+      number: pull_request?.number,
+      title: pull_request?.title,
+      state: pull_request?.state,
+      html_url: pull_request?.html_url,
+      diff_url: pull_request?.diff_url,
       patch_url: pull_request?.patch_url,
-      head_sha:  pull_request?.head?.sha,
-      base_sha:  pull_request?.base?.sha,
-      base_ref:  pull_request?.base?.ref,
-      head_ref:  pull_request?.head?.ref,
-      author:    pull_request?.user?.login,
+      head_sha: pull_request?.head?.sha,
+      base_sha: pull_request?.base?.sha,
+      base_ref: pull_request?.base?.ref,
+      head_ref: pull_request?.head?.ref,
+      author: pull_request?.user?.login,
     },
     installation: installation?.id != null
       ? { id: installation.id }
