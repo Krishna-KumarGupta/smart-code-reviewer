@@ -125,10 +125,28 @@ class LLMReviewClient:
             return "Review could not be completed.", [], []
 
         import json
+        
+        # Strip potential markdown code block formatting
+        cleaned_content = content.strip()
+        if cleaned_content.startswith("```json"):
+            cleaned_content = cleaned_content[7:]
+        elif cleaned_content.startswith("```"):
+            cleaned_content = cleaned_content[3:]
+        if cleaned_content.endswith("```"):
+            cleaned_content = cleaned_content[:-3]
+        
+        # Robust extraction: find first { and last }
+        start_idx = cleaned_content.find("{")
+        end_idx = cleaned_content.rfind("}")
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            cleaned_content = cleaned_content[start_idx:end_idx+1]
+        
+        cleaned_content = cleaned_content.strip()
+
         try:
-            data = json.loads(content)
+            data = json.loads(cleaned_content)
         except Exception as exc:
-            logger.exception("[llm_client] Failed to parse JSON from response: %s", exc)
+            logger.exception("[llm_client] Failed to parse JSON from response: %s (Raw content: %s)", exc, content)
             return "Review could not be completed.", [], []
 
         review_text: str = data.get("review", "")

@@ -61,7 +61,7 @@ const Sidebar = () => {
   const userNav = [
     { path: '/home',     label: 'Dashboard',   icon: <RiHomeLine /> },
     { path: '/history',  label: 'Review History', icon: <RiHistoryLine /> },
-    { path: '/repos',    label: 'Repositories', icon: <RiGithubLine />, disabled: true },
+    { path: '/repos',    label: 'Repositories', icon: <RiGithubLine /> },
   ];
 
   const adminNav = [

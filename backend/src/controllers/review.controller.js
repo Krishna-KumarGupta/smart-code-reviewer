@@ -103,6 +103,98 @@ export class ReviewController {
   }
 
   /**
+     * Retries a previously failed (or stuck) review.
+     *
+     * Re-validates the repo/PR still exist and are accessible, then re-triggers
+     * review-agent's real pipeline for the SAME reviewId — matching the pattern
+     * already established in triggerReview (calls review-agent's POST /reviews
+     * via makeReviewAgentHeaders, does not touch the old Node/Celery worker path).
+     *
+     * POST /api/reviews/:reviewId/retry
+     */
+  static async retryReview(req, res, next) {
+    try {
+      const { reviewId } = req.params;
+      const userId = req.user.id;
+
+      // 1. Fetch existing review, confirm ownership
+      const { data: review, error: reviewError } = await supabaseAdmin
+        .from('reviews')
+        .select('*')
+        .eq('id', reviewId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (reviewError || !review) {
+        return sendError(res, 'Review not found or access denied', 404);
+      }
+
+      // 2. Parse owner/repo from repo_url
+      const parts = review.repo_url.replace(/\/$/, '').split('/');
+      const repo = parts.pop();
+      const owner = parts.pop();
+
+      // 3. Re-verify the PR still exists on GitHub (repo could've been renamed/deleted since)
+      const token = await getValidAccessToken(userId);
+      const metadata = await getPullRequestMetadata(owner, repo, review.pr_number, token);
+
+      if (!metadata) {
+        return sendError(res, 'Pull request not found on GitHub', 404);
+      }
+
+      const repoUrl = `https://github.com/${owner}/${repo}`;
+      console.log(
+        `[Review Controller] Retrying review ${reviewId} for ${repoUrl} PR#${review.pr_number}`
+      );
+
+      // 4. Call review-agent's real API — same pattern as triggerReview.
+      //    Pass the pre-existing reviewId so review-agent can reuse/overwrite the same row
+      //    instead of creating a brand-new one (review-agent's TriggerReviewRequest already
+      //    supports an optional review_id field for exactly this case).
+      let agentResponse;
+      try {
+        agentResponse = await fetch(`${REVIEW_AGENT_URL}/reviews`, {
+          method: 'POST',
+          headers: makeReviewAgentHeaders(req.user, req.userRole || null),
+          body: JSON.stringify({
+            repo_url: repoUrl,
+            pr_number: review.pr_number,
+            review_id: reviewId,
+          }),
+        });
+      } catch (fetchError) {
+        console.error('[Review Controller] Failed to connect to review-agent:', fetchError);
+        return sendError(res, `Failed to connect to review-agent: ${fetchError.message}`, 502);
+      }
+
+      if (!agentResponse.ok) {
+        const errorData = await agentResponse.json().catch(() => ({}));
+        console.error('[Review Controller] review-agent returned an error:', errorData);
+        return sendError(
+          res,
+          errorData.detail?.error || 'review-agent returned an error',
+          agentResponse.status
+        );
+      }
+
+      const agentData = await agentResponse.json();
+      console.log(
+        `[Review Controller] review-agent successfully re-enqueued review. review_id: ${agentData.review_id}`
+      );
+
+      return sendSuccess(res, {
+        message: 'AI Review workflow successfully re-enqueued for retry',
+        reviewId: agentData.review_id,
+        status: agentData.status || 'queued',
+      }, 202);
+
+    } catch (error) {
+      console.error('[Review Controller Error] retryReview failed:', error);
+      next(error);
+    }
+  }
+
+  /**
    * Fetches a single review by its Supabase UUID.
    * Only the review's owner can access it.
    *

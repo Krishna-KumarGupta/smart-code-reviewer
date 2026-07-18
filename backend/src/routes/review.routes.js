@@ -19,6 +19,9 @@ const router = express.Router();
 // Trigger a manual review → returns { reviewId, taskId, status }
 router.post('/trigger', verifyJWT, ReviewController.triggerReview);
 
+// Retry a failed review → returns { reviewId, taskId, status }
+router.post('/:reviewId/retry', verifyJWT, ReviewController.retryReview);
+
 // List user's reviews
 router.get('/', verifyJWT, ReviewController.getUserReviews);
 
