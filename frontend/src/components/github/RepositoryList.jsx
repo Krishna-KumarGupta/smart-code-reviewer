@@ -347,19 +347,7 @@ const RepositoryList = ({ className = '' }) => {
                         {repo.github_webhook_id ? 'Enabled · Webhook Active' : 'Disabled · Webhook Inactive'}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      disabled={togglingRepos[repo.id]}
-                      onClick={(event) => handleToggleAIReview(repo, event)}
-                      className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                        repo.github_webhook_id
-                          ? 'bg-success/10 text-success hover:bg-success/20'
-                          : 'bg-primary/10 text-primary hover:bg-primary/20'
-                      }`}
-                    >
-                      {togglingRepos[repo.id] ? <RiLoader4Line className="animate-spin text-sm" /> : <RiToggleLine className="text-sm" />}
-                      {repo.github_webhook_id ? 'Disable AI Review' : 'Enable AI Review'}
-                    </button>
+
                   </div>
 
                   <button

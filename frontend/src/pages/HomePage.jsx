@@ -428,30 +428,6 @@ const HomePage = () => {
 
 
 
-                <div
-                  className="
-                  flex items-center
-                  justify-between
-                  p-3 rounded-xl
-                  opacity-40
-                  cursor-not-allowed"
-                >
-
-                  <div className="flex items-center gap-2.5 text-sm text-text-secondary">
-
-                    <RiGithubLine />
-
-                    GitHub Repos
-
-                  </div>
-
-
-                  <span className="text-xs text-text-muted">
-                    Soon
-                  </span>
-
-
-                </div>
 
 
               </div>
