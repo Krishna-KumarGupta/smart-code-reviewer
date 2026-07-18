@@ -91,7 +91,7 @@ async def _run_async(
     from app.structure.circular_deps import detect_circular_dependencies
     from app.vuln.osv_runner import run_osv_scanner
     from app.vuln.osv_parser import parse_osv_output
-    from app.review.llm_client import LLMReviewClient
+    from app.review.llm_client import run_llm_review
     from app.merge.report import build_report
     from app.config import get_settings
 
@@ -156,14 +156,15 @@ async def _run_async(
         diff_context = _format_diff_context(pr_files)
         diff_file_set = set(changed_files)
 
-        llm_client = LLMReviewClient()
         review_text, improvements, llm_findings = await asyncio.to_thread(
-            llm_client.review,
+            run_llm_review,
             diff_context,
             slices_text,
             lint_findings,
             circular_findings,
             diff_file_set,
+            diff_hunks,
+            budgeted_slices,
         )
 
         # ── Merge & score ─────────────────────────────────────────────────────
