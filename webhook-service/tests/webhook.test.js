@@ -8,11 +8,14 @@ process.env.SUPABASE_URL = 'https://mock.supabase.co';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'mock-key';
 process.env.REDIS_URL = 'redis://localhost:6379';
 
-// Import modules
+// Static imports for pure modules (no env-var guards at module evaluation time)
 import { verifyWebhookSignature } from '../src/utils/githubWebhookVerifier.js';
-import { handlePullRequestEvent, handlePingEvent, analyzePrTask } from '../src/services/webhookQueueService.js';
-import redis from '../src/config/redis.js';
-import supabaseAdmin from '../src/config/supabase.js';
+
+// Dynamic imports for env-configured modules — must come AFTER process.env assignments
+// because ESM static imports are hoisted and evaluated before any top-level statements run.
+const { handlePullRequestEvent, handlePingEvent, analyzePrTask } = await import('../src/services/webhookQueueService.js');
+const redis = (await import('../src/config/redis.js')).default;
+const supabaseAdmin = (await import('../src/config/supabase.js')).default;
 
 // Helper to construct a valid HMAC signature for tests
 const computeSignature = (body, secret) => {
