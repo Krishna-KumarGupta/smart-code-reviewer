@@ -204,7 +204,7 @@ async def _run_async(
 def _parse_owner_repo(repo_url: str) -> tuple[str, str]:
     """Extract owner and repo name from an HTTPS GitHub URL."""
     # https://github.com/owner/repo  or  https://github.com/owner/repo.git
-    parts = repo_url.rstrip("/").rstrip(".git").split("/")
+    parts = repo_url.rstrip("/").removesuffix(".git").split("/")
     return parts[-2], parts[-1]
 
 

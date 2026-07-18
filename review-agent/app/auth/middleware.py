@@ -72,14 +72,14 @@ async def verify_service_call(
 
     # ── 2. Require forwarded user identity from backend ───────────────────────
     user_id = request.headers.get("X-User-Id", "").strip()
-    user_email = request.headers.get("X-User-Email", "").strip()
+    user_email = request.headers.get("X-User-Email", "").strip() or "unknown@domain.com"
 
-    if not user_id or not user_email:
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "success": False,
-                "error": "Missing required headers: X-User-Id and X-User-Email must be forwarded by backend",
+                "error": "Missing required header: X-User-Id must be forwarded by backend",
                 "code": "USER_HEADERS_MISSING",
             },
         )

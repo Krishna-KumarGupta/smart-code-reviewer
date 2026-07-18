@@ -40,18 +40,8 @@ export async function analyzePrHandler(payload) {
       throw new Error('[Worker] No reviewId in payload — Supabase row was not pre-created by the controller');
     }
 
-    // 1. Resolve User Email from payload or fallback to admin auth lookup
-    let userEmail = payload.userEmail;
-    if (!userEmail && userId) {
-      try {
-        const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
-        if (!userError && userData?.user) {
-          userEmail = userData.user.email;
-        }
-      } catch (err) {
-        console.warn(`[Worker] Failed user email lookup for ID ${userId}:`, err.message);
-      }
-    }
+    // 1. Resolve User Email from payload or fallback to empty string
+    const userEmail = payload.userEmail || '';
 
     console.log(`[Worker] Starting review-agent call for PR #${prNumber} on ${repoUrl} (reviewId: ${reviewId})`);
 
