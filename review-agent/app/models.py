@@ -119,6 +119,7 @@ class TriggerReviewRequest(BaseModel):
     repo_url: str = Field(..., description="HTTPS clone URL of the repository")
     pr_number: int = Field(..., gt=0, description="Pull request number")
     review_id: str | None = Field(None, description="Optional caller-supplied review ID")
+    github_token: str | None = Field(None, description="Optional caller-supplied GitHub token to use instead of the service's own GITHUB_APP_TOKEN")
 
 
 class TriggerReviewResponse(BaseModel):
