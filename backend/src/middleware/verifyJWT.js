@@ -26,9 +26,9 @@ const verifyJWT = async (req, res, next) => {
         code: 'AUTH_HEADER_MISSING',
       });
     }
-    console.log("Authorization Header:", authHeader);
+    const token = authHeader.slice(7);
+    console.info('[verifyJWT] Bearer token received — verifying with Supabase');
 
-    const token = authHeader.slice(7); // Remove "Bearer " prefix
 
     // Verify token via Supabase — validates signature and expiry
     const { data, error } = await supabaseAnon.auth.getUser(token);
@@ -41,10 +41,10 @@ const verifyJWT = async (req, res, next) => {
       });
     }
 
-    req.user = data.user; // { id, email, role, ... }
+    req.user = data.user;
     next();
   } catch (err) {
-    next(err); // Delegate unexpected errors to global handler
+    next(err);
   }
 };
 

@@ -1,0 +1,27 @@
+-- ============================================================
+-- Migration 005 — DIAGNOSTIC ONLY (DO NOT RUN YET)
+-- Smart Code Reviewer
+--
+-- STATUS: HELD PENDING INVESTIGATION
+--
+-- This migration was originally drafted to drop the standalone
+-- UNIQUE constraint on github_accounts.github_user_id.
+--
+-- It MUST NOT be run until the server logs from the diagnostic
+-- storeTokens() instrumentation confirm the actual root cause:
+--
+--   1. If "github_id_owned_by_another_user: true" appears in logs:
+--      → A different Supabase user already owns this GitHub account.
+--        The conflict guard in storeTokens() will prevent the crash.
+--        Schema change may NOT be needed.
+--
+--   2. If "github_id_owned_by_another_user: false" and the upsert
+--      still crashes on github_accounts_github_user_id_key:
+--      → PostgreSQL/Supabase upsert bug with multiple unique constraints.
+--        Then this migration should be applied.
+--
+-- Check server logs first.
+-- ============================================================
+
+-- ALTER TABLE public.github_accounts
+--   DROP CONSTRAINT IF EXISTS github_accounts_github_user_id_key;

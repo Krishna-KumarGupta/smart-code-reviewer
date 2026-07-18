@@ -19,12 +19,16 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 
 import profileRoutes from './src/routes/profile.js';
-import adminRoutes   from './src/routes/admin.js';
-import notFound      from './src/middleware/notFound.js';
-import errorHandler  from './src/middleware/errorHandler.js';
+import adminRoutes from './src/routes/admin.js';
+import githubRoutes from './src/github/routes/githubRoutes.js';
+import githubWebhookRoutes from './src/github/routes/githubWebhookRoutes.js';
+import githubWebhookManagementRoutes from './src/github/routes/githubWebhookManagementRoutes.js';
+import reviewRoutes from './src/routes/review.routes.js';
+import notFound from './src/middleware/notFound.js';
+import errorHandler from './src/middleware/errorHandler.js';
 
-const app  = express();
-const PORT = process.env.PORT || 5000;
+const app = express();
+const PORT = process.env.PORT || 5001;
 
 // ─── Security & Logging ───────────────────────────────────────────────────────
 app.use(helmet());
@@ -39,6 +43,12 @@ app.use(
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
+
+// ─── Webhook Routes (MUST be before global body parsers) ────────────────────
+// The GitHub webhook endpoint uses express.raw() at the route level to capture
+// the raw Buffer needed for HMAC-SHA256 signature verification.
+// If express.json() runs first, the raw body is consumed and HMAC will fail.
+app.use('/api/github', githubWebhookRoutes);
 
 // ─── Body Parser ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10kb' }));       // Limit body size for security
@@ -58,6 +68,9 @@ app.get('/health', (_req, res) => {
 // ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api', profileRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/github', githubRoutes);
+app.use('/api/github', githubWebhookManagementRoutes);
 
 // ─── 404 — must be after all routes ──────────────────────────────────────────
 app.use(notFound);

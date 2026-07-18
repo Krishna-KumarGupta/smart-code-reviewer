@@ -1,0 +1,42 @@
+# Layout rules for Python projects
+# Each rule is: required_path (relative, glob-style), description, severity
+stack_name: python
+manifest_indicators:
+  - "pyproject.toml"
+  - "setup.py"
+  - "setup.cfg"
+  - "requirements.txt"
+
+rules:
+  - path: "README.md"
+    description: "Project must have a README.md at the root"
+    severity: warning
+    optional: true
+
+  - path: "pyproject.toml"
+    description: "Python projects should use pyproject.toml for packaging"
+    severity: warning
+    optional: true
+
+  - path: "tests/"
+    description: "A tests/ directory should be present"
+    severity: warning
+    optional: true
+
+  - path: ".gitignore"
+    description: "A .gitignore should be present"
+    severity: warning
+    optional: true
+
+forbidden:
+  - path: "*.pyc"
+    description: "Compiled Python files should not be committed"
+    severity: error
+
+  - path: "__pycache__/"
+    description: "__pycache__ directories should not be committed"
+    severity: error
+
+  - path: ".env"
+    description: ".env file should not be committed — use .env.example"
+    severity: error

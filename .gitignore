@@ -63,3 +63,44 @@ backend/coverage/
 .cache/
 .temp/
 tmp/
+
+# ─── Python ───────────────────────────────────────────────────────────────────
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Environments (virtual environments, virtualenv, etc.)
+.venv/
+venv/
+ENV/
+env/
+*.venv/
+
+# Unit test / coverage reports / static analysis
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.hypothesis/
+
+# ─── Python packaging artifacts ────────────────────────────────────────────────
+*.egg-info/
+build/
+dist/
+
+# ─── SQLite (review-agent's local dev DB) ──────────────────────────────────────
+*.db
+*.sqlite3
+review_agent.db
+
+# ─── Antigravity / agent working files ─────────────────────────────────────────
+.gemini/
+walkthrough.md
+implementation_plan.md
+task.md
+DECISIONS.mdbackend/path_output.txt
