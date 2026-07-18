@@ -70,7 +70,7 @@ export class ReviewController {
         agentResponse = await fetch(`${REVIEW_AGENT_URL}/reviews`, {
           method: 'POST',
           headers: makeReviewAgentHeaders(req.user, req.userRole || null),
-          body: JSON.stringify({ repo_url: repoUrl, pr_number: prNumber }),
+          body: JSON.stringify({ repo_url: repoUrl, pr_number: prNumber, github_token: token }),
         });
       } catch (fetchError) {
         console.error('[Review Controller] Failed to connect to review-agent:', fetchError);
