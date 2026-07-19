@@ -41,8 +41,7 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # OpenRouter model IDs require a provider prefix, e.g. openai/gpt-5-mini.
     # To use direct OpenAI instead, clear OPENROUTER_BASE_URL and use gpt-5-mini.
-    openai_model: str = "openai/gpt-5-mini"
-    llm_orchestration: Literal["simple", "langgraph"] = "langgraph"
+    openai_model: str = "openai/gpt-4o-mini"
 
     # ── Impact slicing ────────────────────────────────────────────────────────
     impact_slice_max_tokens: int = 20_000

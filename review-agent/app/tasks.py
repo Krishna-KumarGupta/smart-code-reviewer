@@ -61,7 +61,25 @@ def run_review_pipeline(
     """
     return asyncio.run(
         _run_async(self, review_id, repo_url, pr_number, clone_url,
-                   base_sha, head_sha, user_id, user_email, github_token)
+                   base_sha, head_sha, user_id, user_email, github_token, is_celery=True)
+    )
+
+
+async def run_review_pipeline_async(
+    review_id: str,
+    repo_url: str,
+    pr_number: int,
+    clone_url: str,
+    base_sha: str,
+    head_sha: str,
+    user_id: str,
+    user_email: str,
+    github_token: str | None = None,
+) -> dict:
+    """Async execution of review pipeline without Celery/Redis."""
+    return await _run_async(
+        None, review_id, repo_url, pr_number, clone_url,
+        base_sha, head_sha, user_id, user_email, github_token, is_celery=False
     )
 
 
@@ -76,8 +94,9 @@ async def _run_async(
     user_id: str,
     user_email: str,
     github_token: str | None = None,
+    is_celery: bool = True,
 ) -> dict:
-    """Async implementation of the pipeline (called via asyncio.run)."""
+    """Async implementation of the pipeline."""
     from app.db.session import get_session, init_db
     from app.db.models import Review
 
@@ -124,7 +143,7 @@ async def _run_async(
             return report.model_dump()
 
         # ── Clone repository ──────────────────────────────────────────────────
-        tmpdir = await blobless_clone(clone_url, base_sha, head_sha)
+        tmpdir = await blobless_clone(clone_url, base_sha, head_sha, github_token)
         all_files = _get_all_files(tmpdir)
 
         diff_hunks = extract_diff_hunks(pr_files)
@@ -194,11 +213,12 @@ async def _run_async(
     finally:
         if tmpdir:
             cleanup_clone(tmpdir)
-        # Dispose engine + reset singletons so the *next* task's asyncio.run()
-        # starts with a fresh connection pool not bound to this (now closing)
-        # event loop.  Without this, asyncpg raises "Event loop is closed".
-        from app.db.session import dispose_engine
-        await dispose_engine()
+        if is_celery:
+            # Dispose engine + reset singletons so the *next* task's asyncio.run()
+            # starts with a fresh connection pool not bound to this (now closing)
+            # event loop.  Without this, asyncpg raises "Event loop is closed".
+            from app.db.session import dispose_engine
+            await dispose_engine()
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
