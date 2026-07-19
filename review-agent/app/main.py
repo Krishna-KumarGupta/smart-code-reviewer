@@ -197,10 +197,24 @@ async def trigger_review(
 
     Returns a review_id that can be polled via GET /reviews/{review_id}.
     """
-    review_id = body.review_id if body.review_id else str(uuid.uuid4())
+    if body.review_id:
+        try:
+            uuid.UUID(body.review_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"success": False, "error": "Invalid review_id format. Must be a valid UUID string.", "code": "INVALID_UUID_FORMAT"},
+            )
+        review_id = body.review_id
+    else:
+        review_id = str(uuid.uuid4())
 
     async with get_session() as session:
         review = await session.get(Review, review_id)
+        # Note: If a review_id already exists in the database, we overwrite and reuse the existing row
+        # instead of throwing a 409 Conflict. This is required because webhook automation workflows
+        # and retries/re-runs may reuse pre-generated Supabase review IDs, and updating/resetting the row
+        # status to 'queued' allows the workflow to be re-run safely and idempotently.
         if review:
             review.repo_url = body.repo_url
             review.pr_number = body.pr_number
@@ -294,6 +308,9 @@ async def get_review(
     return ReviewStatusResponse(
         review_id=review.id,
         status=review.status,  # type: ignore[arg-type]
+        repo_url=review.repo_url,
+        pr_number=review.pr_number,
+        created_at=review.created_at.isoformat(),
         report=report,
         error=review.error,
     )
@@ -312,7 +329,12 @@ async def list_reviews(
     List past reviews, optionally filtered by repo URL.
     """
     async with get_session() as session:
-        stmt = select(Review).order_by(Review.created_at.desc()).limit(50)
+        stmt = (
+            select(Review)
+            .where(Review.user_id == ctx.user_id)
+            .order_by(Review.created_at.desc())
+            .limit(50)
+        )
         if repo:
             stmt = stmt.where(Review.repo_url == repo)
         result = await session.execute(stmt)
@@ -321,10 +343,13 @@ async def list_reviews(
     items: list[ReviewListItem] = []
     for r in reviews:
         score = None
+        finding_count = None
         if r.report_json:
             try:
                 data = json.loads(r.report_json)
                 score = data.get("score")
+                bugs = data.get("bugs") or data.get("findings") or []
+                finding_count = len(bugs)
             except Exception:
                 pass
         items.append(ReviewListItem(
@@ -333,6 +358,7 @@ async def list_reviews(
             pr_number=r.pr_number,
             status=r.status,  # type: ignore[arg-type]
             score=score,
+            finding_count=finding_count,
             created_at=r.created_at.isoformat(),
         ))
     return items

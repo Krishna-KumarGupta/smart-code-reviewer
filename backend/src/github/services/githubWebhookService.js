@@ -22,7 +22,7 @@
 
 import { supabaseAdmin } from '../../config/supabase.js';
 import { PersistenceService } from '../../services/persistence.service.js';
-import { analyzePrTask } from '../../tasks/analyzePrTask.js';
+import { REVIEW_AGENT_URL, makeReviewAgentHeaders } from '../../utils/reviewAgent.js';
 import Redis from 'ioredis';
 
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
@@ -127,9 +127,34 @@ export const handlePullRequestEvent = async (payload, deliveryId = null, eventTy
     timestamp: new Date().toISOString(),
   };
 
-  // ── Step 10: Dispatch the Celery task asynchronously ─────────────────────
-  const taskResult = analyzePrTask.delay(jobPayload);
-  console.log(`[githubWebhookService] Enqueued review job for PR #${cleanPayload.pullRequest.number}. Celery Task ID: ${taskResult.taskId}`);
+  // ── Step 10: Trigger review-agent asynchronously ──────────────────────────
+  const repoUrl = `https://github.com/${cleanPayload.repository.owner}/${cleanPayload.repository.name}`;
+  const userEmail = repository.profiles?.email || 'webhook@github.com';
+  const userIdentity = {
+    id: repository.user_id,
+    email: userEmail,
+  };
+
+  try {
+    const response = await fetch(`${REVIEW_AGENT_URL.replace(/\/$/, '')}/reviews`, {
+      method: 'POST',
+      headers: makeReviewAgentHeaders(userIdentity),
+      body: JSON.stringify({
+        repo_url: repoUrl,
+        pr_number: cleanPayload.pullRequest.number,
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log(`[githubWebhookService] Enqueued review job for PR #${cleanPayload.pullRequest.number}. Review ID: ${data.review_id}`);
+    } else {
+      const errText = await response.text().catch(() => '');
+      console.warn(`[githubWebhookService] review-agent returned status ${response.status}: ${errText}`);
+    }
+  } catch (err) {
+    console.error(`[githubWebhookService] Error calling review-agent:`, err.message);
+  }
 
   return {
     handled: true,
@@ -193,7 +218,7 @@ const getRepositoryDetails = async (githubRepoId) => {
 
   const { data, error } = await supabaseAdmin
     .from('repositories')
-    .select('id, user_id, is_active, owner, name, full_name, installation_id')
+    .select('id, user_id, is_active, owner, name, full_name, installation_id, profiles(email)')
     .eq('github_repo_id', githubRepoId)
     .maybeSingle();
 

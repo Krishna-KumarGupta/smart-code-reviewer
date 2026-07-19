@@ -118,8 +118,8 @@ class LLMFinding(BaseModel):
 class TriggerReviewRequest(BaseModel):
     repo_url: str = Field(..., description="HTTPS clone URL of the repository")
     pr_number: int = Field(..., gt=0, description="Pull request number")
-    review_id: str | None = Field(None, description="Optional pre-created review ID")
-    github_token: str | None = Field(None, description="Optional GitHub token to use for this specific request")
+    review_id: str | None = Field(None, description="Optional caller-supplied review ID")
+    github_token: str | None = Field(None, description="Optional caller-supplied GitHub token to use instead of the service's own GITHUB_APP_TOKEN")
 
 
 class TriggerReviewResponse(BaseModel):
@@ -129,7 +129,10 @@ class TriggerReviewResponse(BaseModel):
 
 class ReviewStatusResponse(BaseModel):
     review_id: str
-    status: Literal["queued", "running", "completed", "failed", "processing", "pending"]
+    status: Literal["queued", "running", "completed", "failed"]
+    repo_url: str
+    pr_number: int
+    created_at: str
     report: ReviewReport | None = None
     error: str | None = None
 
@@ -138,6 +141,7 @@ class ReviewListItem(BaseModel):
     review_id: str
     repo_url: str
     pr_number: int
-    status: Literal["queued", "running", "completed", "failed", "processing", "pending"]
+    status: Literal["queued", "running", "completed", "failed"]
     score: int | None = None
+    finding_count: int | None = None
     created_at: str

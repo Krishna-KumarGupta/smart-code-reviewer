@@ -61,6 +61,20 @@ services:
       - redis
       - review-agent
 
+  # ─── Webhook Service (Dedicated Webhook Handler) ───────────────────────────
+  webhook-service:
+    build:
+      context: ./webhook-service
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    env_file:
+      - ./webhook-service/.env
+    networks:
+      - scr-network
+    depends_on:
+      - redis
+
   # ─── Redis (Celery broker) ─────────────────────────────────────────────────
   redis:
     image: redis:7-alpine

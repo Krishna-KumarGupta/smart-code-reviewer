@@ -295,6 +295,44 @@ class TestReviewRoundTrip:
         assert len(data["report"]["bugs"]) == 1
         assert data["report"]["bugs"][0]["file"] == "app/main.py"
 
+    async def test_list_reviews_only_returns_own_reviews(self, http_client, db_engine):
+        """
+        GET /reviews must only return reviews belonging to the user authenticated
+        via the request headers (X-User-Id). Reviews for other users should not appear.
+        """
+        from app.db.models import Review
+
+        factory = _make_session_factory(db_engine)
+        async with factory() as session:
+            # Review for the current user in _AUTH_HEADERS ("user-uuid-test")
+            session.add(Review(
+                id=str(uuid.uuid4()),
+                repo_url="https://github.com/acme/my-repo",
+                pr_number=1,
+                user_id="user-uuid-test",
+                user_email="test@example.com",
+                status="completed",
+            ))
+            # Review for a different user
+            session.add(Review(
+                id=str(uuid.uuid4()),
+                repo_url="https://github.com/acme/other-repo",
+                pr_number=2,
+                user_id="different-user-uuid",
+                user_email="other@example.com",
+                status="completed",
+            ))
+            await session.commit()
+
+        # Call the GET /reviews endpoint with the standard headers (X-User-Id: user-uuid-test)
+        resp = await http_client.get("/reviews", headers=_AUTH_HEADERS)
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+
+        # Should only return 1 review, which belongs to "user-uuid-test"
+        assert len(data) == 1
+        assert data[0]["repo_url"] == "https://github.com/acme/my-repo"
+
 
 # ─── Test class: tasks.py status transitions ──────────────────────────────────
 

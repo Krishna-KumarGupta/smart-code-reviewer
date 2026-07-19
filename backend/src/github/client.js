@@ -57,13 +57,13 @@ export async function getPullRequestMetadata(owner, repo, pullNumber, token = nu
 export async function getPullRequestFiles(owner, repo, pullNumber, token = null) {
   const client = token ? new Octokit({ auth: token }) : octokit;
   return retryWithBackoff(() =>
-    client.pulls.listFiles({
+    client.paginate(client.pulls.listFiles, {
       owner,
       repo,
       pull_number: pullNumber,
       per_page: 100,
     })
-  ).then(res => res.data);
+  );
 }
 
 /**

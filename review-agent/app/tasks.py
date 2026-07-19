@@ -91,7 +91,7 @@ async def _run_async(
     from app.structure.circular_deps import detect_circular_dependencies
     from app.vuln.osv_runner import run_osv_scanner
     from app.vuln.osv_parser import parse_osv_output
-    from app.review.llm_client import LLMReviewClient
+    from app.review.llm_client import run_llm_review
     from app.merge.report import build_report
     from app.config import get_settings
 
@@ -120,7 +120,7 @@ async def _run_async(
             report = build_report([], [], [], [], [],
                                   "This PR contains only documentation or asset changes.",
                                   ["No code changes detected — nothing to review."])
-            await _persist_report(review_id, report)
+            await _persist_report(review_id, report, pr_files)
             return report.model_dump()
 
         # ── Clone repository ──────────────────────────────────────────────────
@@ -156,14 +156,15 @@ async def _run_async(
         diff_context = _format_diff_context(pr_files)
         diff_file_set = set(changed_files)
 
-        llm_client = LLMReviewClient()
         review_text, improvements, llm_findings = await asyncio.to_thread(
-            llm_client.review,
+            run_llm_review,
             diff_context,
             slices_text,
             lint_findings,
             circular_findings,
             diff_file_set,
+            diff_hunks,
+            budgeted_slices,
         )
 
         # ── Merge & score ─────────────────────────────────────────────────────
@@ -177,7 +178,7 @@ async def _run_async(
             improvements=improvements,
         )
 
-        await _persist_report(review_id, report)
+        await _persist_report(review_id, report, pr_files)
         return report.model_dump()
 
     except Exception as exc:
@@ -187,6 +188,7 @@ async def _run_async(
             if review:
                 review.status = "failed"
                 review.error = str(exc)
+        await _send_notification_safely(review_id)
         raise
 
     finally:
@@ -204,7 +206,7 @@ async def _run_async(
 def _parse_owner_repo(repo_url: str) -> tuple[str, str]:
     """Extract owner and repo name from an HTTPS GitHub URL."""
     # https://github.com/owner/repo  or  https://github.com/owner/repo.git
-    parts = repo_url.rstrip("/").rstrip(".git").split("/")
+    parts = repo_url.rstrip("/").removesuffix(".git").split("/")
     return parts[-2], parts[-1]
 
 
@@ -231,7 +233,7 @@ def _format_diff_context(pr_files: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-async def _persist_report(review_id: str, report) -> None:
+async def _persist_report(review_id: str, report, pr_files: list[dict] | None = None) -> None:
     from app.db.session import get_session
     from app.db.models import Review
 
@@ -240,3 +242,148 @@ async def _persist_report(review_id: str, report) -> None:
         if review:
             review.status = "completed"
             review.report_json = report.model_dump_json()
+
+    await _send_notification_safely(review_id)
+    await _post_github_comment_safely(review_id, pr_files)
+
+
+async def _send_notification_safely(review_id: str) -> None:
+    """
+    Look up the review by ID, check if email has been sent, and send it if not.
+    Catches any exception, updates the DB with email_error on failure,
+    or marks email_sent=True on success.
+    """
+    from app.config import get_settings
+    from app.db.session import get_session
+    from app.db.models import Review
+    from app.notify.email_client import get_email_client
+    import json
+
+    settings = get_settings()
+    if not settings.email_enabled:
+        logger.debug("[email] Email notifications are disabled via kill switch.")
+        return
+
+    async with get_session() as session:
+        review = await session.get(Review, review_id)
+        if not review:
+            logger.warning("[email] Review %s not found for notification.", review_id)
+            return
+
+        if review.email_sent:
+            logger.info("[email] Email already sent for review %s. Skipping.", review_id)
+            return
+
+        to_email = review.user_email
+        if to_email == "webhook@github.com" or not to_email:
+            logger.info("[email] Review %s created by webhook or missing user email. Skipping email.", review_id)
+            return
+
+        # Extract repo name
+        parts = review.repo_url.rstrip("/").rstrip(".git").split("/")
+        repo_name = parts[-1] if parts else "Unknown Repo"
+
+        pr_number = review.pr_number
+        status = review.status
+        error_msg = review.error
+
+        # Default empty fields
+        score = None
+        review_excerpt = ""
+        findings = []
+
+        if review.report_json:
+            try:
+                report_data = json.loads(review.report_json)
+                score = report_data.get("score")
+                review_excerpt = report_data.get("review", "")
+                findings = report_data.get("bugs", [])
+            except Exception as e:
+                logger.error("[email] Failed to parse report_json: %s", e)
+
+        # Call notify client
+        try:
+            client = get_email_client(settings)
+            await client.send_review_notification(
+                to_email=to_email,
+                repo_name=repo_name,
+                pr_number=pr_number,
+                review_id=review_id,
+                status=status,
+                score=score,
+                review_excerpt=review_excerpt,
+                findings=findings,
+                error=error_msg,
+            )
+            # Update database status on success
+            review.email_sent = True
+            review.email_error = None
+            logger.info("[email] Successfully sent email for review %s to %s", review_id, to_email)
+        except Exception as exc:
+            logger.warning("[email] Failed to send email for review %s: %s", review_id, exc)
+            review.email_sent = False
+            review.email_error = str(exc)
+
+
+async def _post_github_comment_safely(review_id: str, pr_files: list[dict] | None = None) -> None:
+    """
+    Look up the review by ID, check if a GitHub PR review comment has been posted, and post it if not.
+    Catches any exception, updates the DB with github_comment_error on failure,
+    or marks github_comment_posted=True on success.
+    """
+    from app.config import get_settings
+    from app.db.session import get_session
+    from app.db.models import Review
+    from app.notify.github_comment import post_github_comment
+    import json
+
+    settings = get_settings()
+    if not settings.github_comment_enabled:
+        logger.debug("[github_comment] PR review comments are disabled via kill switch.")
+        return
+
+    async with get_session() as session:
+        review = await session.get(Review, review_id)
+        if not review:
+            logger.warning("[github_comment] Review %s not found for notification.", review_id)
+            return
+
+        if review.github_comment_posted:
+            logger.info("[github_comment] PR review comment already posted for review %s. Skipping.", review_id)
+            return
+
+        repo_url = review.repo_url
+        pr_number = review.pr_number
+        score = None
+        review_excerpt = ""
+        findings = []
+
+        if review.report_json:
+            try:
+                report_data = json.loads(review.report_json)
+                score = report_data.get("score")
+                review_excerpt = report_data.get("review", "")
+                findings = report_data.get("bugs", [])
+            except Exception as e:
+                logger.error("[github_comment] Failed to parse report_json: %s", e)
+
+        # Call notify client
+        try:
+            await post_github_comment(
+                review_id=review_id,
+                repo_url=repo_url,
+                pr_number=pr_number,
+                score=score if score is not None else 0,
+                review_narrative=review_excerpt,
+                findings=findings,
+                pr_files=pr_files,
+                settings=settings,
+            )
+            # Update database status on success
+            review.github_comment_posted = True
+            review.github_comment_error = None
+            logger.info("[github_comment] Successfully posted PR review comment for review %s", review_id)
+        except Exception as exc:
+            logger.warning("[github_comment] Failed to post PR review comment for review %s: %s", review_id, exc)
+            review.github_comment_posted = False
+            review.github_comment_error = str(exc)

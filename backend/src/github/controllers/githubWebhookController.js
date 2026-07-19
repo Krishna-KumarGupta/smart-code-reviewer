@@ -115,7 +115,6 @@ export const handleWebhook = async (req, res, next) => {
       // ── pull_request: Delegate full processing to the service layer ───────
       const deliveryId = req.headers['x-github-delivery'] || null;
       const result = await handlePullRequestEvent(payload, deliveryId, eventType);
-      
       let status = 200;
       if (result.reason === 'repository_not_managed') {
         status = 404;
