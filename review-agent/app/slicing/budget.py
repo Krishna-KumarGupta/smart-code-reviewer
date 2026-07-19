@@ -20,15 +20,64 @@ logger = logging.getLogger(__name__)
 try:
     import tiktoken as _tiktoken
     _ENC = _tiktoken.get_encoding("cl100k_base")
-
-    def _count_tokens(text: str) -> int:
-        return len(_ENC.encode(text))
-
 except Exception:
     logger.warning("[budget] tiktoken not available — falling back to word-count approximation")
+    _ENC = None
 
-    def _count_tokens(text: str) -> int:  # type: ignore[misc]
-        return len(text.split())
+
+def count_tokens(text: str) -> int:
+    """Count tokens in text using tiktoken cl100k_base (or word count fallback)."""
+    if not text:
+        return 0
+    if _ENC is not None:
+        try:
+            return len(_ENC.encode(text))
+        except Exception:
+            pass
+    return len(text.split())
+
+
+_count_tokens = count_tokens
+
+
+def truncate_text_to_tokens(
+    text: str,
+    max_tokens: int,
+    suffix: str = "\n... [truncated for token budget]",
+) -> str:
+    """Truncate text so count_tokens(result) <= max_tokens."""
+    if not text or max_tokens <= 0:
+        return ""
+
+    if count_tokens(text) <= max_tokens:
+        return text
+
+    suffix_tokens = count_tokens(suffix)
+    target_tokens = max(1, max_tokens - suffix_tokens)
+
+    if _ENC is not None:
+        try:
+            encoded = _ENC.encode(text)
+            if len(encoded) > target_tokens:
+                return _ENC.decode(encoded[:target_tokens]) + suffix
+        except Exception as exc:
+            logger.debug("[budget] tiktoken decode failed during truncation: %s", exc)
+
+    lines = text.splitlines()
+    acc: list[str] = []
+    current_tokens = suffix_tokens
+    for line in lines:
+        line_tokens = count_tokens(line + "\n")
+        if current_tokens + line_tokens > max_tokens:
+            break
+        acc.append(line)
+        current_tokens += line_tokens
+
+    if not acc and lines:
+        words = text.split()
+        return " ".join(words[:target_tokens]) + suffix
+
+    return "\n".join(acc) + suffix
 
 
 def format_slice_header(s: ImpactSlice) -> str:

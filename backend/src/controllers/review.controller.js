@@ -1,10 +1,19 @@
 import { PersistenceService } from '../services/persistence.service.js';
-import { analyzePrTask } from '../tasks/analyzePrTask.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import { supabaseAdmin } from '../config/supabase.js';
 import { getPullRequestMetadata } from '../github/client.js';
 import { getValidAccessToken } from '../github/services/githubTokenService.js';
-import crypto from 'crypto';
+import { REVIEW_AGENT_URL, makeReviewAgentHeaders } from '../utils/reviewAgent.js';
+
+// Parses "https://github.com/owner/repo" into { name, owner, full_name }.
+// Used to build the `repositories` object the frontend reads for display
+// (repo name/owner badges on History and Detail pages).
+function parseOwnerRepo(repoUrl) {
+  const parts = repoUrl.replace(/\/$/, '').replace(/\.git$/, '').split('/');
+  const name = parts[parts.length - 1] || 'Unknown';
+  const owner = parts[parts.length - 2] || 'Unknown';
+  return { name, owner, full_name: `${owner}/${name}` };
+}
 
 export class ReviewController {
   /**
@@ -13,9 +22,9 @@ export class ReviewController {
    * Flow:
    *  1. Validate inputs & fetch repo from Supabase
    *  2. Verify the PR exists on GitHub
-   *  3. Create a `reviews` row in Supabase (synchronously) — this is the reviewId
-   *  4. Dispatch a Celery task that carries the reviewId
-   *  5. Return 202 with reviewId so the frontend can navigate immediately
+   *  3. Call review-agent's POST /reviews (review-agent owns the reviews table
+   *     and generates the reviewId itself)
+   *  4. Return 202 with reviewId so the frontend can navigate immediately
    *
    * POST /api/reviews/trigger
    */
@@ -45,6 +54,7 @@ export class ReviewController {
 
       // 2. Fetch Pull Request details from GitHub to verify and get SHAs
       const token = await getValidAccessToken(userId);
+      console.log('[Review Controller] GitHub token available:', !!token);
       const metadata = await getPullRequestMetadata(owner, repo, parseInt(pullNumber, 10), token);
 
       if (!metadata) {
@@ -53,69 +63,37 @@ export class ReviewController {
 
       const prNumber = metadata.number;
       const repoUrl = `https://github.com/${owner}/${repo}`;
-      const userEmail = req.user?.email || null;
+      console.log(`[Review Controller] Calling review-agent to trigger manual review for ${repoUrl} PR#${prNumber}`);
 
-      // 3. Synchronously create the reviews row in Supabase.
-      //    This gives us the reviewId before the async worker starts.
-      const reviewId = crypto.randomUUID();
-      const { error: insertError } = await supabaseAdmin
-        .from('reviews')
-        .insert({
-          id: reviewId,
-          user_id: userId,
-          user_email: userEmail,
-          repo_url: repoUrl,
-          pr_number: prNumber,
-          status: 'pending',
-          report_json: null,
-          error: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+      let agentResponse;
+      try {
+        agentResponse = await fetch(`${REVIEW_AGENT_URL}/reviews`, {
+          method: 'POST',
+          headers: makeReviewAgentHeaders(req.user, req.userRole || null),
+          body: JSON.stringify({ repo_url: repoUrl, pr_number: prNumber, github_token: token }),
         });
-
-      if (insertError) {
-        console.error('[Review Controller] Failed to insert reviews row:', insertError);
-        return sendError(res, 'Failed to create review record', 500);
+      } catch (fetchError) {
+        console.error('[Review Controller] Failed to connect to review-agent:', fetchError);
+        return sendError(res, `Failed to connect to review-agent: ${fetchError.message}`, 502);
       }
 
-      // 4. Build the Celery job payload — include reviewId so the worker
-      //    can update the exact row that was just created.
-      const jobPayload = {
-        reviewId,                                      // ← the Supabase reviews.id
-        userId,
-        userEmail,
-        repositoryId,
-        installation_id: repoRow.installation_id || null,
-        repository_id: repoRow.github_repo_id,
-        owner,
-        repo,
-        repository_full_name: repoRow.full_name,
-        pullNumber: prNumber,
-        pull_number: prNumber,
-        pull_request_id: metadata.id,
-        pull_request_url: metadata.html_url,
-        head_sha: metadata.head.sha,
-        base_sha: metadata.base.sha,
-        sender: metadata.user?.login || 'unknown',
-        event_type: 'manual',
-        github_token: token,
-        delivery_id: `manual-${repoRow.github_repo_id}-${prNumber}-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-      };
+      if (!agentResponse.ok) {
+        const errorData = await agentResponse.json().catch(() => ({}));
+        console.error('[Review Controller] review-agent returned an error:', errorData);
+        return sendError(
+          res,
+          errorData.detail?.error || 'review-agent returned an error',
+          agentResponse.status
+        );
+      }
 
-      // 5. Dispatch the Celery task asynchronously
-      const taskResult = analyzePrTask.delay(jobPayload);
+      const agentData = await agentResponse.json();
+      console.log(`[Review Controller] review-agent successfully enqueued review. review_id: ${agentData.review_id}`);
 
-      console.log(
-        `[Review Controller] Celery task dispatched. reviewId: ${reviewId}, taskId: ${taskResult.taskId}`
-      );
-
-      // 6. Return 202 with the reviewId — frontend navigates immediately
       return sendSuccess(res, {
         message: 'AI Review workflow successfully enqueued',
-        reviewId,
-        taskId: taskResult.taskId,
-        status: 'pending',
+        reviewId: agentData.review_id,
+        status: agentData.status || 'queued',
       }, 202);
 
     } catch (error) {
@@ -125,17 +103,21 @@ export class ReviewController {
   }
 
   /**
-   * Retries an existing review.
-   * Finds the review, looks up the repository, resets the status, and dispatches a new Celery task.
-   *
-   * POST /api/reviews/:reviewId/retry
-   */
+     * Retries a previously failed (or stuck) review.
+     *
+     * Re-validates the repo/PR still exist and are accessible, then re-triggers
+     * review-agent's real pipeline for the SAME reviewId — matching the pattern
+     * already established in triggerReview (calls review-agent's POST /reviews
+     * via makeReviewAgentHeaders, does not touch the old Node/Celery worker path).
+     *
+     * POST /api/reviews/:reviewId/retry
+     */
   static async retryReview(req, res, next) {
     try {
       const { reviewId } = req.params;
       const userId = req.user.id;
 
-      // 1. Fetch existing review
+      // 1. Fetch existing review, confirm ownership
       const { data: review, error: reviewError } = await supabaseAdmin
         .from('reviews')
         .select('*')
@@ -147,45 +129,12 @@ export class ReviewController {
         return sendError(res, 'Review not found or access denied', 404);
       }
 
-      // 2. Parse owner and repo from repo_url
-      // Example: https://github.com/owner/repo
+      // 2. Parse owner/repo from repo_url
       const parts = review.repo_url.replace(/\/$/, '').split('/');
       const repo = parts.pop();
       const owner = parts.pop();
 
-      // 3. Find repository to get installation details
-      const fullName = `${owner}/${repo}`;
-      let { data: repoRow, error: repoError } = await supabaseAdmin
-        .from('repositories')
-        .select('*')
-        .ilike('full_name', fullName)
-        .maybeSingle();
-
-      // If not found, try a fallback: maybe the PR is on an upstream repo but they installed the app on their fork.
-      if (!repoRow) {
-        const { data: fallbackRepo } = await supabaseAdmin
-          .from('repositories')
-          .select('*')
-          .eq('user_id', userId)
-          .ilike('full_name', `%/${repo}`)
-          .limit(1)
-          .maybeSingle();
-          
-        if (fallbackRepo) {
-          repoRow = fallbackRepo;
-          repoError = null;
-        }
-      }
-
-      if (repoError || !repoRow) {
-        return sendError(res, `Repository not found for: ${fullName} (or fork)`, 404);
-      }
-
-      if (!repoRow.is_active) {
-        return sendError(res, 'Repository is disabled', 400);
-      }
-
-      // 4. Fetch PR details to verify and get SHAs
+      // 3. Re-verify the PR still exists on GitHub (repo could've been renamed/deleted since)
       const token = await getValidAccessToken(userId);
       const metadata = await getPullRequestMetadata(owner, repo, review.pr_number, token);
 
@@ -193,56 +142,51 @@ export class ReviewController {
         return sendError(res, 'Pull request not found on GitHub', 404);
       }
 
-      // 5. Update review status back to pending
-      const { error: updateError } = await supabaseAdmin
-        .from('reviews')
-        .update({
-          status: 'pending',
-          error: null,
-          report_json: null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', reviewId);
+      const repoUrl = `https://github.com/${owner}/${repo}`;
+      console.log(
+        `[Review Controller] Retrying review ${reviewId} for ${repoUrl} PR#${review.pr_number}`
+      );
 
-      if (updateError) {
-        console.error('[Review Controller] Failed to update review status for retry:', updateError);
-        return sendError(res, 'Failed to update review record', 500);
+      // 4. Call review-agent's real API — same pattern as triggerReview.
+      //    Pass the pre-existing reviewId so review-agent can reuse/overwrite the same row
+      //    instead of creating a brand-new one (review-agent's TriggerReviewRequest already
+      //    supports an optional review_id field for exactly this case).
+      let agentResponse;
+      try {
+        agentResponse = await fetch(`${REVIEW_AGENT_URL}/reviews`, {
+          method: 'POST',
+          headers: makeReviewAgentHeaders(req.user, req.userRole || null),
+          body: JSON.stringify({
+            repo_url: repoUrl,
+            pr_number: review.pr_number,
+            review_id: reviewId,
+            github_token: token,
+          }),
+        });
+      } catch (fetchError) {
+        console.error('[Review Controller] Failed to connect to review-agent:', fetchError);
+        return sendError(res, `Failed to connect to review-agent: ${fetchError.message}`, 502);
       }
 
-      // 6. Build the Celery job payload
-      const jobPayload = {
-        reviewId,
-        userId,
-        userEmail: review.user_email,
-        repositoryId: repoRow.id,
-        installation_id: repoRow.installation_id || null,
-        repository_id: repoRow.github_repo_id,
-        owner,
-        repo,
-        repository_full_name: repoRow.full_name,
-        pullNumber: review.pr_number,
-        pull_number: review.pr_number,
-        pull_request_id: metadata.id,
-        pull_request_url: metadata.html_url,
-        head_sha: metadata.head.sha,
-        base_sha: metadata.base.sha,
-        sender: metadata.user?.login || 'unknown',
-        event_type: 'manual_retry',
-        github_token: token,
-        delivery_id: `retry-${repoRow.github_repo_id}-${review.pr_number}-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-      };
+      if (!agentResponse.ok) {
+        const errorData = await agentResponse.json().catch(() => ({}));
+        console.error('[Review Controller] review-agent returned an error:', errorData);
+        return sendError(
+          res,
+          errorData.detail?.error || 'review-agent returned an error',
+          agentResponse.status
+        );
+      }
 
-      // 7. Dispatch Celery task
-      const taskResult = analyzePrTask.delay(jobPayload);
-
-      console.log(`[Review Controller] Retry Celery task dispatched. reviewId: ${reviewId}, taskId: ${taskResult.taskId}`);
+      const agentData = await agentResponse.json();
+      console.log(
+        `[Review Controller] review-agent successfully re-enqueued review. review_id: ${agentData.review_id}`
+      );
 
       return sendSuccess(res, {
-        message: 'AI Review workflow successfully enqueued for retry',
-        reviewId,
-        taskId: taskResult.taskId,
-        status: 'pending',
+        message: 'AI Review workflow successfully re-enqueued for retry',
+        reviewId: agentData.review_id,
+        status: agentData.status || 'queued',
       }, 202);
 
     } catch (error) {
@@ -256,7 +200,8 @@ export class ReviewController {
    * Only the review's owner can access it.
    *
    * Returns the complete review object:
-   *   id, repo_url, pr_number, status, report_json, error, created_at, updated_at, pr_url
+   *   id, repo_url, pr_number, status, report_json, error, created_at, updated_at,
+   *   pr_url, repositories: { name, owner, full_name }
    *
    * GET /api/reviews/:reviewId
    */
@@ -299,6 +244,9 @@ export class ReviewController {
         }
       }
 
+      // Build the repositories object the frontend reads for the repo name/owner badge.
+      const { name, owner, full_name } = parseOwnerRepo(data.repo_url);
+
       return sendSuccess(res, {
         id: data.id,
         repo_url: data.repo_url,
@@ -311,6 +259,7 @@ export class ReviewController {
         pr_url: data.repo_url && data.pr_number
           ? `${data.repo_url}/pull/${data.pr_number}`
           : null,
+        repositories: { name, owner, full_name },
       });
     } catch (err) {
       next(err);
@@ -324,7 +273,17 @@ export class ReviewController {
   static async getUserReviews(req, res, next) {
     try {
       const reviews = await PersistenceService.getUserReviews(req.user.id);
-      return sendSuccess(res, { reviews });
+
+      // Ensure every review has a `repositories` object for the History page badge,
+      // in case PersistenceService doesn't already attach one.
+      const reviewsWithRepos = (reviews || []).map((r) => {
+        if (r.repositories) return r; // already populated, don't override
+        if (!r.repo_url) return r;
+        const { name, owner, full_name } = parseOwnerRepo(r.repo_url);
+        return { ...r, repositories: { name, owner, full_name } };
+      });
+
+      return sendSuccess(res, { reviews: reviewsWithRepos });
     } catch (error) {
       next(error);
     }
