@@ -160,6 +160,7 @@ export class ReviewController {
             repo_url: repoUrl,
             pr_number: review.pr_number,
             review_id: reviewId,
+            github_token: token,
           }),
         });
       } catch (fetchError) {

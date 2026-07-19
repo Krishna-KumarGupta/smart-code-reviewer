@@ -47,8 +47,12 @@ COPY pyproject.toml .
 RUN pip install --no-cache-dir hatchling && \
     pip install --no-cache-dir -e .
 
-# Copy application source
+# Copy application source and startup script
 COPY app/ ./app/
+COPY start.sh .
+
+# Ensure start.sh has execute permissions
+RUN chmod +x start.sh
 
 # Non-root user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
@@ -57,6 +61,5 @@ USER appuser
 # Expose FastAPI port
 EXPOSE 5050
 
-# Default command: FastAPI server.
-# Override with "celery worker" command in docker-compose for the worker service.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5050"]
+# Command to run both FastAPI and Celery Worker
+CMD ["./start.sh"]

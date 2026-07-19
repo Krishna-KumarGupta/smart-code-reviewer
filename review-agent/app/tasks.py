@@ -128,9 +128,19 @@ async def _run_async(
     try:
         # ── Pre-check: docs/asset only? ───────────────────────────────────────
         async with GitHubClient(token=github_token) as gh:
-            pr_files = await gh.get_pr_files(
+            raw_pr_files = await gh.get_pr_files(
                 *_parse_owner_repo(repo_url), pr_number
             )
+
+        # Filter out lock files and non-code assets to prevent context window overflow
+        ignored_patterns = ["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "package.lock"]
+        ignored_extensions = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".pdf", ".zip", ".gz", ".tar"}
+
+        pr_files = [
+            f for f in raw_pr_files
+            if not any(pat in f["filename"] for pat in ignored_patterns)
+            and not any(f["filename"].endswith(ext) for ext in ignored_extensions)
+        ]
 
         changed_files = [f["filename"] for f in pr_files]
 
@@ -243,13 +253,20 @@ async def _run_osv(repo_dir: str):
     return parse_osv_output(raw, repo_dir)
 
 
-def _format_diff_context(pr_files: list[dict]) -> str:
-    """Build a compact diff string for the LLM user message."""
+def _format_diff_context(pr_files: list[dict], max_chars: int = 200_000) -> str:
+    """Build a compact diff string for the LLM user message, capped to avoid context limits."""
     parts: list[str] = []
+    current_len = 0
     for f in pr_files:
         patch = f.get("patch", "")
         if patch:
-            parts.append(f"### {f['filename']}\n```diff\n{patch}\n```")
+            entry = f"### {f['filename']}\n```diff\n{patch}\n```"
+            if current_len + len(entry) > max_chars:
+                parts.append(f"### {f['filename']}\n```diff\n... [diff truncated due to size limits] ...\n```")
+                parts.append("\n\n... [Additional file diffs truncated to fit within context limits] ...")
+                break
+            parts.append(entry)
+            current_len += len(entry)
     return "\n\n".join(parts)
 
 

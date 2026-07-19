@@ -15,6 +15,14 @@ Service-key check is defense-in-depth on top of network isolation.
 
 from __future__ import annotations
 
+import sys
+import asyncio
+
+if sys.platform == "win32":
+    # On Windows, SelectorEventLoop doesn't support subprocesses.
+    # We must explicitly use ProactorEventLoopPolicy.
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from contextlib import asynccontextmanager
 import json
 import logging

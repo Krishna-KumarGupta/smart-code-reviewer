@@ -144,19 +144,28 @@ def is_docs_only(changed_files: list[str]) -> bool:
     return True
 
 
-async def _run_git(args: list[str], cwd: str | None = None) -> str:
-    """Run a git subprocess and return stdout. Raises on non-zero exit."""
-    proc = await asyncio.create_subprocess_exec(
-        "git", *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+import subprocess
+
+def _sync_run_git(args: list[str], cwd: str | None = None) -> tuple[int, str, str]:
+    res = subprocess.run(
+        ["git"] + args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         cwd=cwd,
+        text=True,
+        encoding="utf-8",
+        errors="replace"
     )
-    stdout, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        err = stderr.decode(errors="replace").strip()
+    return res.returncode, res.stdout, res.stderr
+
+
+async def _run_git(args: list[str], cwd: str | None = None) -> str:
+    """Run a git subprocess in a thread to support Windows SelectorEventLoop."""
+    returncode, stdout, stderr = await asyncio.to_thread(_sync_run_git, args, cwd)
+    if returncode != 0:
+        err = stderr.strip()
         raise RuntimeError(f"git {' '.join(args[:3])} failed: {err}")
-    return stdout.decode(errors="replace").strip()
+    return stdout.strip()
 
 
 async def blobless_clone(clone_url: str, base_sha: str, head_sha: str, github_token: str | None = None) -> str:
