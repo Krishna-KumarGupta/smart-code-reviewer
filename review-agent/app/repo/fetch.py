@@ -179,14 +179,8 @@ async def blobless_clone(clone_url: str, base_sha: str, head_sha: str, github_to
     
     masked_url = clone_url
     if github_token:
-        # GitHub App installation tokens (ghs_) require "x-access-token" username.
-        # OAuth tokens (gho_) and PATs (ghp_) should use the token itself as the username.
-        username = "x-access-token" if github_token.startswith("ghs_") else github_token
-        password = github_token if github_token.startswith("ghs_") else ""
-        
-        credentials = f"{username}:{password}" if password else username
-        masked_url = clone_url.replace("https://github.com/", f"https://******@github.com/")
-        clone_url = clone_url.replace("https://github.com/", f"https://{credentials}@github.com/")
+        masked_url = clone_url.replace("https://github.com/", f"https://x-access-token:******@github.com/")
+        clone_url = clone_url.replace("https://github.com/", f"https://x-access-token:{github_token}@github.com/")
         
     logger.info("[fetch] Cloning %s into %s", masked_url, tmpdir)
 

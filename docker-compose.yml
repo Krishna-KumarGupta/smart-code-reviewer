@@ -21,16 +21,27 @@ services:
       context: .
       dockerfile: Dockerfile.webapp
     ports:
-      - "5173:5173"  # Frontend UI
-      - "5000:5000"  # Backend API
-      - "6379:6379"  # Expose Redis for webhook and agent containers
+      - "5173:5173"
+    env_file:
+      - ./frontend/.env
+    networks:
+      - scr-network
+    depends_on:
+      - backend
+
+  # ─── Backend (Node/Express) ────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
     env_file:
       - ./backend/.env
     environment:
-      # Connect to review-agent internally
-      REVIEW_AGENT_URL: http://agent:5050
-      # Redis runs locally within the same container
-      REDIS_URL: redis://localhost:6379
+      # Point backend at the internal review-agent service
+      REVIEW_AGENT_URL: http://review-agent:5050
+      REDIS_URL: redis://redis:6379
     networks:
       - scr-network
     depends_on:
@@ -76,3 +87,6 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+
+volumes:
+  redis-data:
