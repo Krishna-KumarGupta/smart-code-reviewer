@@ -256,7 +256,7 @@ async def _send_notification_safely(review_id: str) -> None:
     from app.config import get_settings
     from app.db.session import get_session
     from app.db.models import Review
-    from app.notify.email_client import get_email_client
+    from app.notify.email_client import send_review_notification_with_fallback
     import json
 
     settings = get_settings()
@@ -301,10 +301,10 @@ async def _send_notification_safely(review_id: str) -> None:
             except Exception as e:
                 logger.error("[email] Failed to parse report_json: %s", e)
 
-        # Call notify client
+        # Call fallback orchestrator — tries SES first, then Brevo automatically
         try:
-            client = get_email_client(settings)
-            await client.send_review_notification(
+            provider_used = await send_review_notification_with_fallback(
+                settings=settings,
                 to_email=to_email,
                 repo_name=repo_name,
                 pr_number=pr_number,
@@ -318,11 +318,16 @@ async def _send_notification_safely(review_id: str) -> None:
             # Update database status on success
             review.email_sent = True
             review.email_error = None
-            logger.info("[email] Successfully sent email for review %s to %s", review_id, to_email)
+            review.email_provider_used = provider_used
+            logger.info(
+                "[email] Successfully sent email for review %s to %s via %s",
+                review_id, to_email, provider_used,
+            )
         except Exception as exc:
-            logger.warning("[email] Failed to send email for review %s: %s", review_id, exc)
+            logger.error("[email] All email providers failed for review %s: %s", review_id, exc)
             review.email_sent = False
             review.email_error = str(exc)
+
 
 
 async def _post_github_comment_safely(review_id: str, pr_files: list[dict] | None = None) -> None:
