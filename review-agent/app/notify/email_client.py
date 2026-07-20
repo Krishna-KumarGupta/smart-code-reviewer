@@ -36,7 +36,7 @@ class EmailClient(Protocol):
 
 def parse_templates() -> tuple[str, str, str, str]:
     """Parse the email HTML templates and plain text fallbacks from review-agent-email-templates.html."""
-    template_path = Path(__file__).parent.parent.parent / "review-agent-email-templates.html"
+    template_path = Path(__file__).parent / "templates" / "review-agent-email-templates.html"
     if not template_path.exists():
         raise FileNotFoundError(f"Email templates file not found at {template_path}")
 
