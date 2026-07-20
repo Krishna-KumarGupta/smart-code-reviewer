@@ -47,6 +47,9 @@ dependencies = [
 
     # LangGraph
     "langgraph>=1.2.0,<2.0.0",
+
+    # AWS SDK (SES email sending)
+    "boto3>=1.35.0",
 ]
 
 [project.optional-dependencies]

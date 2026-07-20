@@ -49,7 +49,8 @@ class Settings(BaseSettings):
 
     # ── Email Settings ────────────────────────────────────────────────────────
     email_enabled: bool = False
-    email_provider: Literal["brevo", "ses"] = "brevo"
+    # SES is tried first if configured; falls back to Brevo automatically.
+    # email_provider field removed — use the ses_configured property instead.
     brevo_api_key: str | None = None
     brevo_sender_email: str | None = None
     brevo_sender_name: str = "review-agent"
@@ -65,6 +66,16 @@ class Settings(BaseSettings):
 
     # ── Database ──────────────────────────────────────────────────────────────
     database_url: str = "sqlite+aiosqlite:///./review_agent.db"
+
+    @property
+    def ses_configured(self) -> bool:
+        """True iff all four AWS SES vars are non-empty — SES will be attempted first."""
+        return bool(
+            self.aws_ses_access_key
+            and self.aws_ses_secret_key
+            and self.aws_ses_region
+            and self.aws_ses_sender_email
+        )
 
     @property
     def DATABASE_URL(self) -> str:  # noqa: N802 — uppercase alias for convenience
