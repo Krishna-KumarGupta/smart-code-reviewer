@@ -4,10 +4,10 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 
 COPY . .
 
-EXPOSE 5001
+EXPOSE 5000
 
 CMD ["npm", "start"]
