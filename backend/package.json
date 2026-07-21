@@ -5,15 +5,15 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
-    "lint": "eslint src/ server.js",
-    "test": "node --test --test-force-exit tests/*.test.js"
+    "start": "concurrently \"node server.js\" \"node src/worker.js\"",
+    "dev": "concurrently \"nodemon server.js\" \"nodemon src/worker.js\"",
+    "lint": "eslint src/ server.js"
   },
   "dependencies": {
     "@octokit/rest": "^22.0.1",
     "@supabase/supabase-js": "^2.45.4",
     "celery-node": "^0.5.9",
+    "concurrently": "^10.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.19.2",
@@ -24,9 +24,6 @@
     "nodemon": "^3.1.7"
   },
   "engines": {
-    "node": ">=20.0.0"
-  },
-  "overrides": {
-    "uuid": "14.0.1"
+    "node": ">=18.0.0"
   }
 }

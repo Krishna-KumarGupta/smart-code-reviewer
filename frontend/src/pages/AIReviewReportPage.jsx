@@ -475,14 +475,16 @@ const AIReviewReportPage = () => {
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
-              <h1 className="text-xl font-bold text-text-primary leading-snug">
-                <span className="font-mono text-text-secondary">
+              <h1 className="text-xl font-bold text-text-primary leading-snug break-words">
+                <span className="font-mono text-text-secondary break-all">
                   {repoName}
                 </span>
                 <span className="text-text-muted mx-2">·</span>
                 PR #{review.pr_number}
-                {review.pr_title && (
-                  <span className="text-base font-medium text-text-muted ml-2">{review.pr_title}</span>
+                {review.pr_title &&
+                 review.pr_title !== `PR #${review.pr_number}` &&
+                 review.pr_title !== `${review.pr_number}` && (
+                  <span className="text-base font-medium text-text-muted ml-2 break-words">{review.pr_title}</span>
                 )}
               </h1>
               <div className="flex flex-wrap items-center gap-2 mt-1">

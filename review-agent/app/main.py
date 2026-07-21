@@ -15,13 +15,21 @@ Service-key check is defense-in-depth on top of network isolation.
 
 from __future__ import annotations
 
+import sys
+import asyncio
+
+if sys.platform == "win32":
+    # On Windows, SelectorEventLoop doesn't support subprocesses.
+    # We must explicitly use ProactorEventLoopPolicy.
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from contextlib import asynccontextmanager
 import json
 import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status, BackgroundTasks
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
@@ -90,14 +98,14 @@ async def health() -> dict:
 # ─── GitHub webhook ──────────────────────────────────────────────────────────
 
 @app.post("/webhook/github", tags=["webhook"])
-async def github_webhook(request: Request) -> Response:
+async def github_webhook(request: Request, background_tasks: BackgroundTasks) -> Response:
     """
     Receive GitHub webhook events.
 
     Public endpoint — authenticated exclusively via X-Hub-Signature-256 HMAC.
     NOT protected by X-Service-Api-Key (GitHub calls this directly).
 
-    Returns 202 within 2s; heavy work is enqueued to Celery.
+    Returns 202 within 2s; heavy work is enqueued to BackgroundTasks.
     """
     raw_body = await request.body()
     signature = request.headers.get("x-hub-signature-256")
@@ -122,58 +130,66 @@ async def github_webhook(request: Request) -> Response:
             content={"success": False, "error": "Invalid JSON body"},
         )
 
-    # ── 3. Handle ping ─────────────────────────────────────────────────────
-    if event_type == "ping":
-        return JSONResponse(
-            status_code=200,
-            content={"success": True, "handled": True, "message": "pong"},
-        )
-
-    # ── 4. Handle pull_request ─────────────────────────────────────────────
-    if event_type == "pull_request":
-        pr_ctx = extract_pr_context(payload)
-        if pr_ctx is None:
+    try:
+        # ── 3. Handle ping ─────────────────────────────────────────────────────
+        if event_type == "ping":
             return JSONResponse(
                 status_code=200,
-                content={"success": True, "handled": False, "reason": "ignored_action"},
+                content={"success": True, "handled": True, "message": "pong"},
             )
 
-        # Persist a queued record, then enqueue the Celery task
-        review_id = str(uuid.uuid4())
-        async with get_session() as session:
-            review = Review(
-                id=review_id,
+        # ── 4. Handle pull_request ─────────────────────────────────────────────
+        if event_type == "pull_request":
+            pr_ctx = extract_pr_context(payload)
+            if pr_ctx is None:
+                return JSONResponse(
+                    status_code=200,
+                    content={"success": True, "handled": False, "reason": "ignored_action"},
+                )
+
+            # Persist a queued record, then enqueue the BackgroundTask
+            review_id = str(uuid.uuid4())
+            async with get_session() as session:
+                review = Review(
+                    id=review_id,
+                    repo_url=pr_ctx["repo_url"],
+                    pr_number=pr_ctx["pull_number"],
+                    user_id="webhook",      # Webhook has no user context
+                    user_email="webhook@github.com",
+                    status="queued",
+                )
+                session.add(review)
+
+            _enqueue_pipeline(
+                background_tasks=background_tasks,
+                review_id=review_id,
                 repo_url=pr_ctx["repo_url"],
                 pr_number=pr_ctx["pull_number"],
-                user_id="webhook",      # Webhook has no user context
+                clone_url=pr_ctx["clone_url"],
+                base_sha=pr_ctx["base_sha"],
+                head_sha=pr_ctx["head_sha"],
+                user_id="webhook",
                 user_email="webhook@github.com",
-                status="queued",
+                github_token=None,
             )
-            session.add(review)
 
-        _enqueue_pipeline(
-            review_id=review_id,
-            repo_url=pr_ctx["repo_url"],
-            pr_number=pr_ctx["pull_number"],
-            clone_url=pr_ctx["clone_url"],
-            base_sha=pr_ctx["base_sha"],
-            head_sha=pr_ctx["head_sha"],
-            user_id="webhook",
-            user_email="webhook@github.com",
-            github_token=None,
-        )
+            logger.info("[webhook] Enqueued review_id=%s for PR #%s", review_id, pr_ctx["pull_number"])
+            return JSONResponse(
+                status_code=status.HTTP_202_ACCEPTED,
+                content={"success": True, "handled": True, "review_id": review_id},
+            )
 
-        logger.info("[webhook] Enqueued review_id=%s for PR #%s", review_id, pr_ctx["pull_number"])
+        # ── 5. Unsupported event ───────────────────────────────────────────────
         return JSONResponse(
-            status_code=status.HTTP_202_ACCEPTED,
-            content={"success": True, "handled": True, "review_id": review_id},
+            status_code=200,
+            content={"success": True, "handled": False, "reason": f"unsupported_event:{event_type}"},
         )
-
-    # ── 5. Unsupported event ───────────────────────────────────────────────
-    return JSONResponse(
-        status_code=200,
-        content={"success": True, "handled": False, "reason": f"unsupported_event:{event_type}"},
-    )
+    except Exception as exc:
+        logger.exception("[webhook] Critical failure processing GitHub webhook (event=%s)", event_type)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"Internal server error processing webhook: {str(exc)}"},
+        )
 
 
 # ─── Reviews — service-key protected ─────────────────────────────────────────
@@ -186,6 +202,7 @@ async def github_webhook(request: Request) -> Response:
 )
 async def trigger_review(
     body: TriggerReviewRequest,
+    background_tasks: BackgroundTasks,
     ctx: RequestContext = Depends(verify_service_call),
 ) -> TriggerReviewResponse:
     """
@@ -247,18 +264,20 @@ async def trigger_review(
         head_sha = pr_info["head"]["sha"]
         base_sha = pr_info["base"]["sha"]
     except Exception as exc:
-        logger.error("[reviews] Failed to fetch PR info: %s", exc)
+        logger.exception("[reviews] Failed to fetch PR info from GitHub API for %s/%s PR #%s", owner, repo_name, body.pr_number)
+        error_msg = f"GitHub API error: {str(exc)}"
         async with get_session() as session:
             review = await session.get(Review, review_id)
             if review:
                 review.status = "failed"
-                review.error = str(exc)
+                review.error = error_msg
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={"success": False, "error": f"Failed to fetch PR info: {exc}", "code": "GITHUB_API_ERROR"},
+            detail={"success": False, "error": error_msg, "code": "GITHUB_API_ERROR"},
         )
 
     _enqueue_pipeline(
+        background_tasks=background_tasks,
         review_id=review_id,
         repo_url=body.repo_url,
         pr_number=body.pr_number,
@@ -366,10 +385,10 @@ async def list_reviews(
 
 # ─── Private helpers ──────────────────────────────────────────────────────────
 
-def _enqueue_pipeline(**kwargs) -> None:
-    """Send the pipeline task to Celery (import here to avoid circular imports)."""
-    from app.tasks import run_review_pipeline
-    run_review_pipeline.delay(**kwargs)
+def _enqueue_pipeline(background_tasks: BackgroundTasks, **kwargs) -> None:
+    """Send the pipeline task to BackgroundTasks (import here to avoid circular imports)."""
+    from app.tasks import run_review_pipeline_async
+    background_tasks.add_task(run_review_pipeline_async, **kwargs)
 
 
 def _parse_owner_repo(repo_url: str) -> tuple[str, str]:

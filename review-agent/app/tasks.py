@@ -61,7 +61,25 @@ def run_review_pipeline(
     """
     return asyncio.run(
         _run_async(self, review_id, repo_url, pr_number, clone_url,
-                   base_sha, head_sha, user_id, user_email, github_token)
+                   base_sha, head_sha, user_id, user_email, github_token, is_celery=True)
+    )
+
+
+async def run_review_pipeline_async(
+    review_id: str,
+    repo_url: str,
+    pr_number: int,
+    clone_url: str,
+    base_sha: str,
+    head_sha: str,
+    user_id: str,
+    user_email: str,
+    github_token: str | None = None,
+) -> dict:
+    """Async execution of review pipeline without Celery/Redis."""
+    return await _run_async(
+        None, review_id, repo_url, pr_number, clone_url,
+        base_sha, head_sha, user_id, user_email, github_token, is_celery=False
     )
 
 
@@ -76,8 +94,9 @@ async def _run_async(
     user_id: str,
     user_email: str,
     github_token: str | None = None,
+    is_celery: bool = True,
 ) -> dict:
-    """Async implementation of the pipeline (called via asyncio.run)."""
+    """Async implementation of the pipeline."""
     from app.db.session import get_session, init_db
     from app.db.models import Review
 
@@ -109,9 +128,19 @@ async def _run_async(
     try:
         # ── Pre-check: docs/asset only? ───────────────────────────────────────
         async with GitHubClient(token=github_token) as gh:
-            pr_files = await gh.get_pr_files(
+            raw_pr_files = await gh.get_pr_files(
                 *_parse_owner_repo(repo_url), pr_number
             )
+
+        # Filter out lock files and non-code assets to prevent context window overflow
+        ignored_patterns = ["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "package.lock"]
+        ignored_extensions = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".pdf", ".zip", ".gz", ".tar"}
+
+        pr_files = [
+            f for f in raw_pr_files
+            if not any(pat in f["filename"] for pat in ignored_patterns)
+            and not any(f["filename"].endswith(ext) for ext in ignored_extensions)
+        ]
 
         changed_files = [f["filename"] for f in pr_files]
 
@@ -194,11 +223,12 @@ async def _run_async(
     finally:
         if tmpdir:
             cleanup_clone(tmpdir)
-        # Dispose engine + reset singletons so the *next* task's asyncio.run()
-        # starts with a fresh connection pool not bound to this (now closing)
-        # event loop.  Without this, asyncpg raises "Event loop is closed".
-        from app.db.session import dispose_engine
-        await dispose_engine()
+        if is_celery:
+            # Dispose engine + reset singletons so the *next* task's asyncio.run()
+            # starts with a fresh connection pool not bound to this (now closing)
+            # event loop.  Without this, asyncpg raises "Event loop is closed".
+            from app.db.session import dispose_engine
+            await dispose_engine()
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -223,13 +253,20 @@ async def _run_osv(repo_dir: str):
     return parse_osv_output(raw, repo_dir)
 
 
-def _format_diff_context(pr_files: list[dict]) -> str:
-    """Build a compact diff string for the LLM user message."""
+def _format_diff_context(pr_files: list[dict], max_chars: int = 200_000) -> str:
+    """Build a compact diff string for the LLM user message, capped to avoid context limits."""
     parts: list[str] = []
+    current_len = 0
     for f in pr_files:
         patch = f.get("patch", "")
         if patch:
-            parts.append(f"### {f['filename']}\n```diff\n{patch}\n```")
+            entry = f"### {f['filename']}\n```diff\n{patch}\n```"
+            if current_len + len(entry) > max_chars:
+                parts.append(f"### {f['filename']}\n```diff\n... [diff truncated due to size limits] ...\n```")
+                parts.append("\n\n... [Additional file diffs truncated to fit within context limits] ...")
+                break
+            parts.append(entry)
+            current_len += len(entry)
     return "\n\n".join(parts)
 
 

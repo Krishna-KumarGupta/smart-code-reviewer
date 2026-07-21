@@ -1,0 +1,3 @@
+[[IgnorePaths]]
+path = "review-agent/tests/fixtures/vuln_repo"
+path = "review-agent/tests/fixtures/vuln_repo/requirements.txt"

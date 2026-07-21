@@ -5,7 +5,7 @@
  * Fetches reviews from /api/reviews and links each to its full ReviewReportPage.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -65,9 +65,11 @@ const ReviewRow = ({ review, index }) => {
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-0.5">
             {/* Repo name */}
-            <span className="text-xs text-text-muted font-mono flex items-center gap-1">
-              <RiGithubLine className="text-xs" />
-              {repo?.full_name || repo?.name || 'Unknown Repo'}
+            <span className="text-xs text-text-muted font-mono flex items-center gap-1 min-w-0 max-w-[200px] sm:max-w-[350px]">
+              <RiGithubLine className="text-xs shrink-0" />
+              <span className="truncate">
+                {repo?.full_name || repo?.name || 'Unknown Repo'}
+              </span>
             </span>
             {/* Status badge */}
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${statusCfg.cls}`}>
@@ -76,9 +78,13 @@ const ReviewRow = ({ review, index }) => {
             </span>
           </div>
 
-          {/* PR title */}
           <p className="text-sm font-semibold text-text-primary truncate">
-            PR #{review.pr_number}{review.pr_title ? ` · ${review.pr_title}` : ''}
+            PR #{review.pr_number}
+            {review.pr_title && 
+             review.pr_title !== `PR #${review.pr_number}` && 
+             review.pr_title !== `${review.pr_number}` 
+              ? ` · ${review.pr_title}` 
+              : ''}
           </p>
 
           {/* Timestamp */}
@@ -119,6 +125,33 @@ const HistoryPage = () => {
   const [reviews, setReviews] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeFilter, setActiveFilter] = useState('All Repos');
+
+  const filteredReviews = useMemo(() => {
+    return reviews.filter((review) => {
+      if (activeFilter === 'This Week') {
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+        return new Date(review.created_at) >= oneWeekAgo;
+      }
+      if (activeFilter === 'High Severity') {
+        let report = review.report_json;
+        if (typeof report === 'string') {
+          try { report = JSON.parse(report); } catch { report = {}; }
+        }
+        report = report || {};
+        const score = report.score;
+        const bugs = Array.isArray(report.bugs) ? report.bugs : [];
+        return (
+          (score !== null && score !== undefined && score < 90) ||
+          bugs.some((b) =>
+            ['critical', 'high', 'error'].includes(b.severity?.toLowerCase())
+          )
+        );
+      }
+      return true; // 'All Repos'
+    });
+  }, [reviews, activeFilter]);
 
   const fetchHistory = async (showLoader = true) => {
     if (showLoader) setIsLoading(true);
@@ -176,23 +209,37 @@ const HistoryPage = () => {
           </p>
         </motion.div>
 
-        {/* Filter Bar (placeholder) */}
+        {/* Filter Bar */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1, duration: 0.4 }}
-          className="glass-card p-4 mb-6 flex items-center gap-3 opacity-70"
+          className="glass-card p-4 mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
         >
-          <span className="text-sm text-text-muted">Filters:</span>
-          {['All Repos', 'This Week', 'High Severity'].map((filter) => (
-            <span
-              key={filter}
-              className="px-3 py-1 rounded-lg bg-surface-2 text-xs text-text-muted border border-border cursor-not-allowed"
-            >
-              {filter}
-            </span>
-          ))}
-          <span className="ml-auto text-xs text-text-muted">Filtered by active repositories</span>
+          <div className="space-y-1.5 flex-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">Filters</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {['All Repos', 'This Week', 'High Severity'].map((filter) => {
+                const isActive = activeFilter === filter;
+                return (
+                  <button
+                    key={filter}
+                    onClick={() => setActiveFilter(filter)}
+                    className={`px-3 py-1.5 rounded-lg text-xs border transition-all duration-200 ${
+                      isActive
+                        ? 'bg-primary/20 text-primary border-primary/40 font-medium'
+                        : 'bg-surface-2 text-text-muted border-border hover:text-text-primary hover:border-primary/30'
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="text-xs text-text-muted shrink-0 mt-1 sm:mt-0 pb-1">
+            {filteredReviews.length} {filteredReviews.length === 1 ? 'review' : 'reviews'} found
+          </div>
         </motion.div>
 
         {/* Review List or Loading */}
@@ -226,9 +273,15 @@ const HistoryPage = () => {
               Trigger a review on any repo to start
             </div>
           </motion.div>
+        ) : filteredReviews.length === 0 ? (
+          <div className="glass-card py-16 px-8 text-center">
+            <RiHistoryLine className="text-3xl text-text-muted mx-auto mb-3" />
+            <p className="text-base font-medium text-text-primary mb-1">No Matching Reviews</p>
+            <p className="text-sm text-text-muted">No reviews match the selected filter: "{activeFilter}".</p>
+          </div>
         ) : (
           <div className="space-y-4">
-            {reviews.map((review, index) => (
+            {filteredReviews.map((review, index) => (
               <ReviewRow key={review.id} review={review} index={index} />
             ))}
           </div>
