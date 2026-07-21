@@ -65,7 +65,7 @@ const ReviewRow = ({ review, index }) => {
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-0.5">
             {/* Repo name */}
-            <span className="text-xs text-text-muted font-mono flex items-center gap-1">
+            <span className="text-xs text-text-muted font-mono flex items-center gap-1 break-all">
               <RiGithubLine className="text-xs" />
               {repo?.full_name || repo?.name || 'Unknown Repo'}
             </span>
