@@ -13,9 +13,10 @@ import { verifyWebhookSignature } from '../src/utils/githubWebhookVerifier.js';
 
 // Dynamic imports for env-configured modules — must come AFTER process.env assignments
 // because ESM static imports are hoisted and evaluated before any top-level statements run.
-const { handlePullRequestEvent, handlePingEvent, analyzePrTask } = await import('../src/services/webhookQueueService.js');
+const { handlePullRequestEvent, handlePingEvent } = await import('../src/services/webhookQueueService.js');
 const redis = (await import('../src/config/redis.js')).default;
 const supabaseAdmin = (await import('../src/config/supabase.js')).default;
+
 
 // Helper to construct a valid HMAC signature for tests
 const computeSignature = (body, secret) => {
@@ -64,13 +65,17 @@ test('Pull Request Webhook Workflow', async (t) => {
   const originalRedisSet = redis.set;
   const originalSupabaseFrom = supabaseAdmin.from;
   const originalSupabaseGetUser = supabaseAdmin.auth.admin.getUserById;
-  const originalAnalyzePrTaskDelay = analyzePrTask.delay;
+  const originalFetch = globalThis.fetch;
 
   // Stubs for clean tracking
-  let celeryDelayCalled = false;
-  let celeryDelayPayload = null;
-  let supabaseInsertCalled = false;
-  let supabaseInsertPayload = null;
+  let fetchCalled = false;
+  let fetchUrl = null;
+  let fetchOptions = null;
+  let fetchResponseMock = {
+    ok: true,
+    json: async () => ({ review_id: 'review-uuid-ok' }),
+    text: async () => 'Error text'
+  };
 
   t.afterEach(() => {
     // Restore original methods
@@ -78,12 +83,16 @@ test('Pull Request Webhook Workflow', async (t) => {
     redis.set = originalRedisSet;
     supabaseAdmin.from = originalSupabaseFrom;
     supabaseAdmin.auth.admin.getUserById = originalSupabaseGetUser;
-    analyzePrTask.delay = originalAnalyzePrTaskDelay;
+    globalThis.fetch = originalFetch;
 
-    celeryDelayCalled = false;
-    celeryDelayPayload = null;
-    supabaseInsertCalled = false;
-    supabaseInsertPayload = null;
+    fetchCalled = false;
+    fetchUrl = null;
+    fetchOptions = null;
+    fetchResponseMock = {
+      ok: true,
+      json: async () => ({ review_id: 'review-uuid-ok' }),
+      text: async () => 'Error text'
+    };
   });
 
   await t.test('ignores unsupported pull_request action (e.g. closed)', async () => {
@@ -183,7 +192,8 @@ test('Pull Request Webhook Workflow', async (t) => {
                     full_name: 'owner/repo',
                     owner: 'owner',
                     name: 'repo',
-                    installation_id: 'inst-uuid'
+                    installation_id: 'inst-uuid',
+                    profiles: { email: 'owner@example.com' }
                   },
                   error: null
                 };
@@ -191,15 +201,13 @@ test('Pull Request Webhook Workflow', async (t) => {
               if (table === 'github_installations') {
                 return { data: { id: 'inst-uuid' }, error: null };
               }
+              if (table === 'github_accounts') {
+                return { data: { id: 'acc-uuid-ok' }, error: null };
+              }
               return { data: null, error: null };
             }
           })
-        }),
-        insert: (row) => {
-          supabaseInsertCalled = true;
-          supabaseInsertPayload = row;
-          return { error: null };
-        }
+        })
       };
     };
 
@@ -208,11 +216,12 @@ test('Pull Request Webhook Workflow', async (t) => {
       error: null
     });
 
-    // Mock Celery delay
-    analyzePrTask.delay = (payload) => {
-      celeryDelayCalled = true;
-      celeryDelayPayload = payload;
-      return { taskId: 'celery-task-123' };
+    // Mock fetch
+    globalThis.fetch = async (url, options) => {
+      fetchCalled = true;
+      fetchUrl = url;
+      fetchOptions = options;
+      return fetchResponseMock;
     };
 
     const payload = {
@@ -226,30 +235,23 @@ test('Pull Request Webhook Workflow', async (t) => {
     
     assert.strictEqual(result.handled, true);
     assert.strictEqual(result.message, 'Review queued');
-    assert.ok(result.reviewId);
+    assert.strictEqual(result.reviewId, 'review-uuid-ok');
     
-    // Assert reviews row was inserted synchronously
-    assert.strictEqual(supabaseInsertCalled, true);
-    assert.strictEqual(supabaseInsertPayload.id, result.reviewId);
-    assert.strictEqual(supabaseInsertPayload.status, 'pending');
-    assert.strictEqual(supabaseInsertPayload.user_id, 'user-uuid-ok');
-    assert.strictEqual(supabaseInsertPayload.repository_id, 'repo-uuid-ok');
-
-    // Assert Celery task was dispatched with correct payload
-    assert.strictEqual(celeryDelayCalled, true);
-    assert.strictEqual(celeryDelayPayload.reviewId, result.reviewId);
-    assert.strictEqual(celeryDelayPayload.userId, 'user-uuid-ok');
-    assert.strictEqual(celeryDelayPayload.userEmail, null);
-    assert.strictEqual(celeryDelayPayload.pullNumber, 10);
-    assert.strictEqual(celeryDelayPayload.delivery_id, 'delivery-id-ok');
+    // Assert fetch was called with correct payload & headers
+    assert.strictEqual(fetchCalled, true);
+    assert.ok(fetchUrl.includes('/reviews'));
+    
+    const body = JSON.parse(fetchOptions.body);
+    assert.strictEqual(body.repo_url, 'https://github.com/owner/repo');
+    assert.strictEqual(body.pr_number, 10);
+    
+    assert.strictEqual(fetchOptions.headers['X-User-Id'], 'user-uuid-ok');
+    assert.strictEqual(fetchOptions.headers['X-User-Email'], 'owner@example.com');
   });
 
-  await t.test('queuing failure updates review row to failed', async () => {
+  await t.test('queuing failure returns correct status', async () => {
     redis.get = async () => null;
     redis.set = async () => 'OK';
-
-    let supabaseUpdateCalled = false;
-    let supabaseUpdatePayload = null;
 
     supabaseAdmin.from = (table) => {
       return {
@@ -268,21 +270,14 @@ test('Pull Request Webhook Workflow', async (t) => {
               return { data: null, error: null };
             }
           })
-        }),
-        insert: () => ({ error: null }),
-        update: (payload) => {
-          supabaseUpdateCalled = true;
-          supabaseUpdatePayload = payload;
-          return {
-            eq: async () => ({ error: null })
-          };
-        }
+        })
       };
     };
 
-    // Force queueing failure
-    analyzePrTask.delay = () => {
-      throw new Error('Redis broker connection lost');
+    // Force queueing failure (fetch throws error)
+    globalThis.fetch = async () => {
+      fetchCalled = true;
+      throw new Error('Connection timeout');
     };
 
     const payload = {
@@ -296,8 +291,10 @@ test('Pull Request Webhook Workflow', async (t) => {
     
     assert.strictEqual(result.handled, false);
     assert.strictEqual(result.reason, 'queue_failure');
-    assert.strictEqual(supabaseUpdateCalled, true);
-    assert.strictEqual(supabaseUpdatePayload.status, 'failed');
-    assert.ok(supabaseUpdatePayload.error.includes('Redis broker connection lost'));
+    assert.ok(result.message.includes('Connection timeout'));
+  });
+
+  t.after(() => {
+    redis.disconnect();
   });
 });

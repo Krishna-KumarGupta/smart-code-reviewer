@@ -43,7 +43,14 @@ def _make_session_factory(engine):
 
 def test_factory_returns_correct_client():
     """get_email_client() shim returns BrevoEmailClient when SES is unconfigured."""
-    settings = Settings(service_api_key="key", openai_api_key="key")
+    settings = Settings(
+        service_api_key="key",
+        openai_api_key="key",
+        aws_ses_access_key="",
+        aws_ses_secret_key="",
+        aws_ses_region="",
+        aws_ses_sender_email="",
+    )
     # No SES vars set → ses_configured is False → shim returns Brevo
     client = get_email_client(settings)
     assert isinstance(client, BrevoEmailClient)

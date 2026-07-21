@@ -1,20 +1,9 @@
 import { supabaseAdmin } from '../config/supabase.js';
 import redis from '../config/redis.js';
-import celery from 'celery-node';
-import crypto from 'crypto';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
-
-// Initialize Celery client matching backend configuration
-const celeryClient = celery.createClient(
-  REDIS_URL,
-  REDIS_URL,
-  'node-queue'
-);
-
-export const analyzePrTask = celeryClient.createTask('tasks.analyzePr');
+import { REVIEW_AGENT_URL, makeReviewAgentHeaders } from '../utils/reviewAgent.js';
 
 const SUPPORTED_PR_ACTIONS = new Set(['opened', 'reopened', 'synchronize']);
 
@@ -77,97 +66,53 @@ export const handlePullRequestEvent = async (payload, deliveryId = null, eventTy
     return { handled: false, reason: 'installation_missing', message: 'GitHub installation missing' };
   }
 
-  // ── Step 6: Create the review row in Supabase synchronously
-  const reviewId = crypto.randomUUID();
-  const repoUrl = `https://github.com/${cleanPayload.repository.owner}/${cleanPayload.repository.name}`;
-
-  const userEmail = null;
-
-  try {
-    const { error: insertError } = await supabaseAdmin
-      .from('reviews')
-      .insert({
-        id: reviewId,
-        user_id: repository.user_id,
-        user_email: userEmail,
-        repository_id: repository.id,
-        repo_url: repoUrl,
-        pr_number: cleanPayload.pullRequest.number,
-        status: 'pending',
-        report_json: null,
-        error: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
-
-    if (insertError) {
-      console.error('[Webhook Service] Failed to insert reviews row:', insertError);
-      throw new Error(`Database error: ${insertError.message}`);
-    }
-  } catch (dbErr) {
-    return { handled: false, reason: 'database_error', message: dbErr.message };
-  }
-
-  // ── Step 7: Prevent duplicate processing (set Redis lock after DB verification)
+  // ── Step 6: Prevent duplicate processing (set Redis lock after DB verification)
   if (deliveryId) {
     await redis.set(`webhook_delivery:${deliveryId}`, 'true', 'EX', 86400); // 24 hours lock
   }
 
-  // ── Step 8: Construct unified review job payload matching exact backend worker spec
-  const jobPayload = {
-    reviewId, // ← critical link
-    userId: repository.user_id,
-    userEmail,
-    repositoryId: repository.id,
-    installation_id: cleanPayload.installation?.id || repository.installation_id || null,
-    repository_id: cleanPayload.repository.id,
-    owner: cleanPayload.repository.owner,
-    repo: cleanPayload.repository.name,
-    repository_full_name: cleanPayload.repository.full_name,
-    pullNumber: cleanPayload.pullRequest.number,
-    pull_number: cleanPayload.pullRequest.number,
-    pull_request_id: cleanPayload.pullRequest.id,
-    pull_request_url: cleanPayload.pullRequest.html_url,
-    head_sha: cleanPayload.pullRequest.head_sha,
-    base_sha: cleanPayload.pullRequest.base_sha,
-    sender: cleanPayload.sender.login,
-    event_type: eventType,
-    delivery_id: deliveryId,
-    timestamp: new Date().toISOString(),
+  // ── Step 7: Call review-agent's API instead of touching Supabase reviews table directly
+  const repoUrl = `https://github.com/${cleanPayload.repository.owner}/${cleanPayload.repository.name}`;
+  const userEmail = repository.profiles?.email || 'webhook@github.com';
+  const userIdentity = {
+    id: repository.user_id,
+    email: userEmail,
   };
 
-  // ── Step 9: Dispatch the Celery task asynchronously
   try {
-    const taskResult = analyzePrTask.delay(jobPayload);
-    console.log(`[Webhook Service] Enqueued review job for PR #${cleanPayload.pullRequest.number}. Celery Task ID: ${taskResult.taskId}`);
+    const response = await fetch(`${REVIEW_AGENT_URL.replace(/\/$/, '')}/reviews`, {
+      method: 'POST',
+      headers: makeReviewAgentHeaders(userIdentity),
+      body: JSON.stringify({
+        repo_url: repoUrl,
+        pr_number: cleanPayload.pullRequest.number,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      console.warn(`[Webhook Service] review-agent returned status ${response.status}: ${errText}`);
+      return {
+        handled: false,
+        reason: 'queue_failure',
+        message: `review-agent returned status ${response.status}: ${errText}`,
+      };
+    }
+
+    const data = await response.json();
+    console.log(`[Webhook Service] Enqueued review job for PR #${cleanPayload.pullRequest.number}. Review ID: ${data.review_id}`);
 
     return {
       handled: true,
       message: 'Review queued',
-      reviewId,
+      reviewId: data.review_id,
     };
-  } catch (queueErr) {
-    console.error('[Webhook Service] Failed to queue task to Celery:', queueErr);
-
-    // Fallback: update review status to failed
-    try {
-      await supabaseAdmin
-        .from('reviews')
-        .update({
-          status: 'failed',
-          error: `Queue failure: ${queueErr.message}`,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', reviewId);
-    } catch (updateErr) {
-      console.error('[Webhook Service] Failed to update review to failed status:', updateErr.message);
-    }
-
+  } catch (err) {
+    console.error(`[Webhook Service] Error calling review-agent:`, err.message);
     return {
       handled: false,
       reason: 'queue_failure',
-      message: `Failed to queue Celery task: ${queueErr.message}`,
-      reviewId,
+      message: `Failed to connect to review-agent: ${err.message}`,
     };
   }
 };
@@ -218,7 +163,7 @@ const getRepositoryDetails = async (githubRepoId) => {
   if (!githubRepoId) return null;
   const { data, error } = await supabaseAdmin
     .from('repositories')
-    .select('id, user_id, is_active, owner, name, full_name, installation_id')
+    .select('id, user_id, is_active, owner, name, full_name, installation_id, profiles(email)')
     .eq('github_repo_id', githubRepoId)
     .maybeSingle();
 
@@ -248,3 +193,4 @@ const checkInstallationExists = async (userId, installationId) => {
   if (!accErr && acc) return true;
   return false;
 };
+
