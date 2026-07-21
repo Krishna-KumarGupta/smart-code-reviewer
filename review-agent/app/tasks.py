@@ -124,7 +124,7 @@ async def _run_async(
             return report.model_dump()
 
         # ── Clone repository ──────────────────────────────────────────────────
-        tmpdir = await blobless_clone(clone_url, base_sha, head_sha)
+        tmpdir = await blobless_clone(clone_url, base_sha, head_sha, github_token)
         all_files = _get_all_files(tmpdir)
 
         diff_hunks = extract_diff_hunks(pr_files)
