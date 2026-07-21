@@ -7,8 +7,6 @@
 #   3. agent   — FastAPI Service (5050) & Celery Worker [Isolated]
 # =============================================================================
 
-version: "3.9"
-
 networks:
   scr-network:
     driver: bridge
@@ -26,8 +24,6 @@ services:
       - ./frontend/.env
     networks:
       - scr-network
-    depends_on:
-      - backend
 
   # ─── Backend (Node/Express) ────────────────────────────────────────────────
   backend:
@@ -40,11 +36,12 @@ services:
       - ./backend/.env
     environment:
       # Point backend at the internal review-agent service
-      REVIEW_AGENT_URL: http://review-agent:5050
-      REDIS_URL: redis://redis:6379
+      REVIEW_AGENT_URL: http://agent:5050
+      REDIS_URL: redis://webapp:6379
     networks:
       - scr-network
     depends_on:
+      - webapp
       - agent
     restart: unless-stopped
 
@@ -81,6 +78,8 @@ services:
       REDIS_URL: redis://webapp:6379/0
     networks:
       - scr-network
+    depends_on:
+      - webapp
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5050/health"]

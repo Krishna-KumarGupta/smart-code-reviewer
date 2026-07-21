@@ -17,19 +17,19 @@ Write-Host "=============================================" -ForegroundColor Cyan
 if ($Action -eq "start") {
     if ($Container) {
         Write-Host "🚀 Starting container: $Container..." -ForegroundColor Green
-        docker-compose up -d --build $Container
+        docker compose up -d --build $Container
     } else {
         Write-Host "🚀 Starting all containers..." -ForegroundColor Green
-        docker-compose up -d --build
+        docker compose up -d --build
     }
 }
 elseif ($Action -eq "stop") {
     if ($Container) {
         Write-Host "🛑 Stopping container: $Container..." -ForegroundColor Yellow
-        docker-compose stop $Container
+        docker compose stop $Container
     } else {
         Write-Host "🛑 Stopping all containers..." -ForegroundColor Yellow
-        docker-compose down
+        docker compose down
     }
 }
 

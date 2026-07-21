@@ -18,8 +18,8 @@ COPY backend/ ./backend/
 COPY frontend/ ./frontend/
 COPY start-webapp.sh ./
 
-# Make startup script executable
-RUN chmod +x start-webapp.sh
+# Make startup script executable and fix line endings
+RUN sed -i 's/\r$//' start-webapp.sh && chmod +x start-webapp.sh
 
 # Expose ports:
 # 5000: Backend API
