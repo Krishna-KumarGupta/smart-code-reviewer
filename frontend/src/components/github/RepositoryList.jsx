@@ -171,7 +171,6 @@ const RepositoryList = ({ className = '' }) => {
         activeRepoForPRs.owner,
         activeRepoForPRs.name,
         pr.number,
-        profile?.id,
         activeRepoForPRs.id
       );
 
@@ -181,7 +180,7 @@ const RepositoryList = ({ className = '' }) => {
 
       // Extract the reviewId from the backend 202 response.
       // sendSuccess wraps data as { success: true, data: { reviewId, ... } }
-      const reviewId = response?.data?.reviewId;
+      const reviewId = response?.reviewId;
 
       setTimeout(() => {
         setShowLoadingModal(false);
