@@ -21,8 +21,8 @@ RUN pip install --no-cache-dir hatchling && \
 FROM debian:bookworm-slim AS osv-downloader
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
     curl -fsSL \
-      https://github.com/google/osv-scanner/releases/download/v2.0.0/osv-scanner_linux_amd64 \
-      -o /usr/local/bin/osv-scanner && \
+    https://github.com/google/osv-scanner/releases/download/v2.0.0/osv-scanner_linux_amd64 \
+    -o /usr/local/bin/osv-scanner && \
     chmod +x /usr/local/bin/osv-scanner
 
 # ─── Stage 3: Runtime image ──────────────────────────────────────────────────
@@ -34,6 +34,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     git \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy osv-scanner

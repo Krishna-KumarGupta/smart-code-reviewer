@@ -11,7 +11,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import Settings
 from app.db.models import Review
 from app.models import ReviewReport
-from app.notify.email_client import BrevoEmailClient, SESEmailClient, get_email_client
+from app.notify.email_client import BrevoEmailClient, SESEmailClient, get_email_client, send_review_notification_with_fallback
 
 _IN_MEMORY_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -42,12 +42,27 @@ def _make_session_factory(engine):
 
 
 def test_factory_returns_correct_client():
-    settings = Settings(service_api_key="key", openai_api_key="key")
-    settings.email_provider = "brevo"
+    """get_email_client() shim returns BrevoEmailClient when SES is unconfigured."""
+    settings = Settings(
+        service_api_key="key",
+        openai_api_key="key",
+        aws_ses_access_key="",
+        aws_ses_secret_key="",
+        aws_ses_region="",
+        aws_ses_sender_email="",
+    )
+    # No SES vars set → ses_configured is False → shim returns Brevo
     client = get_email_client(settings)
     assert isinstance(client, BrevoEmailClient)
 
-    settings.email_provider = "ses"
+
+def test_factory_returns_ses_when_configured():
+    """get_email_client() shim returns SESEmailClient when all four SES vars are set."""
+    settings = Settings(service_api_key="key", openai_api_key="key")
+    settings.aws_ses_access_key = "AKIAIOSFODNN7EXAMPLE"
+    settings.aws_ses_secret_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    settings.aws_ses_region = "us-east-1"
+    settings.aws_ses_sender_email = "sender@example.com"
     client = get_email_client(settings)
     assert isinstance(client, SESEmailClient)
 
@@ -153,7 +168,7 @@ async def test_email_failure_isolation(db_engine, monkeypatch):
     ):
         settings = Settings(service_api_key="key", openai_api_key="key")
         settings.email_enabled = True
-        settings.email_provider = "brevo"
+        # No SES vars → SES skipped, only Brevo attempted (and it fails)
         settings.brevo_api_key = "fake"
         settings.brevo_sender_email = "sender@test.com"
         mock_settings.return_value = settings
@@ -202,7 +217,7 @@ async def test_email_deduplication(db_engine, monkeypatch):
     ):
         settings = Settings(service_api_key="key", openai_api_key="key")
         settings.email_enabled = True
-        settings.email_provider = "brevo"
+        # No SES vars → SES skipped, Brevo called (and it succeeds)
         settings.brevo_api_key = "fake"
         settings.brevo_sender_email = "sender@test.com"
         mock_settings.return_value = settings
@@ -226,3 +241,64 @@ async def test_email_deduplication(db_engine, monkeypatch):
         await _persist_report(review_id, stub_report)
 
         mock_send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_brevo_windows_path_in_finding():
+    """
+    Regression test: findings whose file paths or descriptions contain backslashes
+    (e.g. Windows-style paths like src\\auth\\Utils.py) must not cause a
+    bad-escape error from re.sub().  The fix replaces re.sub() with str.split()
+    for sentinel removal, so backslashes in replacement content are never
+    interpreted as regex sequences.
+    """
+    settings = Settings(service_api_key="key", openai_api_key="key")
+    settings.brevo_api_key = "fake_key"
+    settings.brevo_sender_email = "sender@test.com"
+    settings.frontend_review_url_base = "http://localhost:5173/reviews"
+    client = BrevoEmailClient(settings)
+
+    findings = [
+        {
+            "severity": "critical",
+            "file": "src\\auth\\Utils.py",          # Windows backslash path
+            "line_start": 42,
+            "description": "Null pointer at \\User\\data — check input",
+        },
+        {
+            "severity": "high",
+            "file": "src\\models\\User.py",
+            "line_start": None,
+            "description": "Unchecked \\UPPERCASE escape \\N{SNOWMAN} in string",
+        },
+    ]
+
+    with patch("httpx2.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_client.post.return_value = mock_resp
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        # Must not raise — previously crashed with "bad escape \U at position …"
+        await client.send_review_notification(
+            to_email="recipient@test.com",
+            repo_name="my-repo",
+            pr_number=7,
+            review_id="r-win-path",
+            status="completed",
+            score=60,
+            review_excerpt="Some review text",
+            findings=findings,
+            error=None,
+        )
+
+        mock_client.post.assert_called_once()
+        _, kwargs = mock_client.post.call_args
+        html = kwargs["json"]["htmlContent"]
+        text = kwargs["json"]["textContent"]
+
+        # Backslashes must appear literally in the output
+        assert "src\\auth\\Utils.py" in html
+        assert "src\\auth\\Utils.py" in text
+        assert "Null pointer at \\User\\data" in html

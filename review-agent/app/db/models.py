@@ -51,6 +51,7 @@ class Review(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     email_sent: Mapped[bool] = mapped_column(default=False, server_default="false", nullable=False)
     email_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    email_provider_used: Mapped[str | None] = mapped_column(String(20), nullable=True)
     github_comment_posted: Mapped[bool] = mapped_column(default=False, server_default="false", nullable=False)
     github_comment_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
