@@ -2,11 +2,17 @@
 # Smart Code Reviewer — Root docker-compose.yml
 # =============================================================================
 # Brings up all services together:
+#   nginx        — Reverse proxy / webhook entry point (port 8080)
 #   frontend     — Vite dev server  (port 5173)
 #   backend      — Node/Express API (port 5000)
 #   redis        — Celery broker / result backend
+#   webhook-service — Dedicated webhook handler (port 5001) [PRIMARY]
 #   review-agent — FastAPI service  (port 5050) [INTERNAL ONLY]
 #   celery-worker— Celery worker for the review pipeline
+#
+# Webhook architecture:
+#   GitHub → nginx:8080 → webhook-service:5001  (primary)
+#                       ↘ backend:5000           (passive failover)
 #
 # Network: all services share `scr-network` (internal Docker bridge).
 # review-agent and celery-worker are intentionally NOT published on host ports
@@ -70,10 +76,46 @@ services:
       - "5001:5001"
     env_file:
       - ./webhook-service/.env
+    environment:
+      # Point webhook-service at the internal review-agent service
+      REVIEW_AGENT_URL: http://review-agent:5050
     networks:
       - scr-network
     depends_on:
       - redis
+
+  # ─── nginx (Webhook Reverse Proxy) ────────────────────────────────────────
+  # Public entry point for all GitHub webhook events.
+  # Routes /api/github/webhook to webhook-service (primary) and fails over
+  # automatically to backend if webhook-service is unavailable.
+  #
+  # Architecture:
+  #   GitHub → nginx:8080/api/github/webhook → webhook-service:5001 (primary)
+  #                                          ↘ backend:5000          (failover)
+  #
+  # See nginx/nginx.conf for full configuration and failover mechanics.
+  # See webhook-service/README.md for the architectural overview.
+  #
+  # WEBHOOK_ENDPOINT_URL in backend/.env must point at this service:
+  #   WEBHOOK_ENDPOINT_URL=http://localhost:8080/api/github/webhook  (dev)
+  #   WEBHOOK_ENDPOINT_URL=https://<domain>/api/github/webhook       (prod)
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80" # Host port 8080 → nginx container port 80
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - scr-network
+    depends_on:
+      - webhook-service
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://127.0.0.1/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   # ─── Redis (Celery broker) ─────────────────────────────────────────────────
   redis:
@@ -82,11 +124,11 @@ services:
     networks:
       - scr-network
     ports:
-      - "6379:6379"       # Expose for local dev debugging; remove in production
+      - "6379:6379" # Expose for local dev debugging; remove in production
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -114,10 +156,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5050/health"]
+      test: [ "CMD", "curl", "-f", "http://127.0.0.1:5050/health" ]
       interval: 15s
       timeout: 5s
       retries: 3
+      start_period: 90s
 
   # ─── Celery Worker ────────────────────────────────────────────────────────
   # Same image as review-agent, different command.
@@ -126,10 +169,7 @@ services:
       context: ./review-agent
       dockerfile: Dockerfile
     command: >
-      celery -A app.celery_app worker
-      --loglevel=info
-      --concurrency=2
-      --queues=celery
+      celery -A app.celery_app worker --loglevel=info --concurrency=2 --queues=celery
     env_file:
       - ./review-agent/.env
     networks:

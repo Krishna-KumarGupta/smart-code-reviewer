@@ -52,14 +52,24 @@ const GITHUB_API_VERSION = '2022-11-28';
  * The single URL that GitHub will call for all webhook events.
  * Read from the environment so it works in development (ngrok) and production.
  *
+ * In local dev the canonical target is the nginx reverse proxy (port 8080),
+ * which forwards to webhook-service (primary) with automatic failover to
+ * backend (secondary) via proxy_next_upstream.  Set this env var to your
+ * public ngrok / production URL in all deployed environments.
+ *
  * Example:
  *   WEBHOOK_ENDPOINT_URL=https://your-ngrok-url.io/api/github/webhook
  *
- * Falls back to the local dev address if not explicitly set.
+ * Local dev fallback → nginx endpoint (primary/failover handled by nginx):
+ *   http://localhost:8080/api/github/webhook
+ *
+ * NOTE: Only newly-enabled repositories receive this URL.  Existing repos
+ * registered before this change continue to deliver directly to backend and
+ * remain fully operational until manually re-enabled.
  */
 const WEBHOOK_ENDPOINT_URL =
   process.env.WEBHOOK_ENDPOINT_URL ||
-  `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/github/webhook`;
+  'http://localhost:8080/api/github/webhook';
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 

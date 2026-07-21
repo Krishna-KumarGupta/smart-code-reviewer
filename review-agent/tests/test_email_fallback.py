@@ -68,7 +68,14 @@ def _ses_configured_settings() -> Settings:
 
 def _ses_unconfigured_settings() -> Settings:
     """Return a Settings object with NO SES vars set."""
-    s = Settings(service_api_key="key", openai_api_key="key")
+    s = Settings(
+        service_api_key="key",
+        openai_api_key="key",
+        aws_ses_access_key="",
+        aws_ses_secret_key="",
+        aws_ses_region="",
+        aws_ses_sender_email="",
+    )
     s.brevo_api_key = "brevo-fake-key"
     s.brevo_sender_email = "sender@test.com"
     s.email_enabled = True
