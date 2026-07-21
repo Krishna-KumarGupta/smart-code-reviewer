@@ -1,5 +1,4 @@
 FROM node:22-alpine
-<<<<<<< HEAD
 
 WORKDIR /app
 
@@ -15,11 +14,3 @@ COPY . .
 EXPOSE 5000
 
 CMD ["npm", "run", "start"]
-=======
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev
-COPY . .
-EXPOSE 5000
-CMD ["npm", "start"]
->>>>>>> 90e2b07da74895062afe63ca6fbca3a214ffddf3
