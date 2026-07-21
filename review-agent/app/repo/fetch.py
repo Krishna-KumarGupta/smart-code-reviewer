@@ -184,6 +184,10 @@ async def blobless_clone(clone_url: str, base_sha: str, head_sha: str, github_to
         
     logger.info("[fetch] Cloning %s into %s", masked_url, tmpdir)
 
+    authed_url = clone_url
+    if github_token:
+        authed_url = clone_url.replace("https://", f"https://x-access-token:{github_token}@", 1)
+
     try:
         # Step 1 — blobless, depth-1, no checkout
         await _run_git([
@@ -191,7 +195,7 @@ async def blobless_clone(clone_url: str, base_sha: str, head_sha: str, github_to
             "--filter=blob:none",
             "--depth=1",
             "--no-checkout",
-            clone_url,
+            authed_url,
             tmpdir,
         ])
 

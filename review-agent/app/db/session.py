@@ -157,4 +157,8 @@ async def init_db() -> None:
         "github_comment_error",
         "ALTER TABLE reviews ADD COLUMN github_comment_error TEXT"
     )
+    await add_column_if_missing(
+        "email_provider_used",
+        "ALTER TABLE reviews ADD COLUMN email_provider_used VARCHAR(20)"
+    )
 
