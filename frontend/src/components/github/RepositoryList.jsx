@@ -171,7 +171,6 @@ const RepositoryList = ({ className = '' }) => {
         activeRepoForPRs.owner,
         activeRepoForPRs.name,
         pr.number,
-        profile?.id,
         activeRepoForPRs.id
       );
 
@@ -181,7 +180,7 @@ const RepositoryList = ({ className = '' }) => {
 
       // Extract the reviewId from the backend 202 response.
       // sendSuccess wraps data as { success: true, data: { reviewId, ... } }
-      const reviewId = response?.data?.reviewId;
+      const reviewId = response?.reviewId;
 
       setTimeout(() => {
         setShowLoadingModal(false);
@@ -312,7 +311,7 @@ const RepositoryList = ({ className = '' }) => {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h4 className="text-base font-semibold text-text-primary">
+                      <h4 className="text-base font-semibold text-text-primary break-all">
                         {repo.name || repo.full_name}
                       </h4>
                       <p className="text-sm text-text-muted">{repo.owner || 'Unknown owner'}</p>

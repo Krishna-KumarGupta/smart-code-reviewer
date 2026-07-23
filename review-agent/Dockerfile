@@ -52,8 +52,8 @@ RUN pip install --no-cache-dir hatchling && \
 COPY app/ ./app/
 COPY start.sh .
 
-# Ensure start.sh has execute permissions
-RUN chmod +x start.sh
+# Ensure start.sh has UNIX line endings and execute permissions
+RUN sed -i 's/\r$//' start.sh && chmod +x start.sh
 
 # Non-root user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app

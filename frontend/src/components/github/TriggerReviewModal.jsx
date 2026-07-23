@@ -53,17 +53,14 @@ const TriggerReviewModal = ({ isOpen, onClose, repositories, initialRepository }
     try {
       setLoading(true);
       setError(null);
-      
-      const repoUrl = `https://github.com/${repo.full_name}`;
-      const result = await reviewService.createReview({
-        repo_url: repoUrl,
-        pr_number: prNum,
-      });
+
+      const [owner, repoName] = repo.full_name.split('/');
+      const result = await reviewService.triggerReview(owner, repoName, prNum, repo.id);
 
       toast.success('Code review triggered successfully!');
       onClose();
       // Redirect to the detail page (matching the route pattern '/history/report?reviewId={uuid}')
-      navigate(`/history/report?reviewId=${result.review.id}`);
+      navigate(`/history/report?reviewId=${result.reviewId}`);
     } catch (err) {
       console.error('[TriggerReviewModal] trigger error:', err);
       setError(err?.response?.data?.error || err.message || 'Failed to trigger review');

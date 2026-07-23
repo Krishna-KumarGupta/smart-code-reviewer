@@ -12,15 +12,11 @@ const reviewService = {
    * Triggers a manual PR review
    * POST /api/reviews/trigger
    */
-  triggerReview: async (owner, repo, pullNumber, userId, repositoryId) => {
+  triggerReview: async (owner, repo, pullNumber, repositoryId) => {
     const response = await api.post('/api/reviews/trigger', {
-      owner,
-      repo,
-      pullNumber,
-      userId,
-      repositoryId,
+      owner, repo, pullNumber, repositoryId,
     });
-    return response.data;
+    return response.data.data;
   },
 
   /**
