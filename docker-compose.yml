@@ -1,5 +1,5 @@
 # =============================================================================
-# Smart Code Reviewer — Customized 3-Container docker-compose.yml
+# Smart Code Reviewer — Root docker-compose.yml
 # =============================================================================
 # Brings up all services together:
 #   nginx        — Reverse proxy / webhook entry point (port 8080)
@@ -24,26 +24,27 @@
 #   2. docker-compose up --build
 # =============================================================================
 
-version: "3.9"
-
 networks:
   scr-network:
     driver: bridge
 
 services:
-  # ─── 1. Webapp Container (UI + API + Redis Broker) ─────────────────────────
-  webapp:
+  # ─── Frontend (Vite + React) ───────────────────────────────────────────────
+  frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.webapp
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
-      - "5173:5173"
+      - "3000:80"
     env_file:
       - ./frontend/.env
     networks:
       - scr-network
     depends_on:
       - backend
+    # Only build if a Dockerfile exists; fall back to dev server otherwise
+    profiles:
+      - full
 
   # ─── Backend (Node/Express) ────────────────────────────────────────────────
   backend:
@@ -61,21 +62,22 @@ services:
     networks:
       - scr-network
     depends_on:
-      - agent
-    restart: unless-stopped
+      - redis
+      - review-agent
 
-  # ─── 2. Webhook Container (Dedicated Webhook Service) ──────────────────────
-  webhook:
+  # ─── Webhook Service (Dedicated Webhook Handler) ───────────────────────────
+  webhook-service:
     build:
       context: ./webhook-service
       dockerfile: Dockerfile
     ports:
-      - "5001:5001" # Webhook receiver port
+      - "5001:5001"
     env_file:
       - ./webhook-service/.env
     environment:
       # Point webhook-service at the internal review-agent service
       REVIEW_AGENT_URL: http://review-agent:5050
+      REDIS_URL: redis://redis:6379
     networks:
       - scr-network
     depends_on:
@@ -130,21 +132,28 @@ services:
       timeout: 5s
       retries: 5
 
-  # ─── 3. Agent Container (FastAPI + Celery Worker) ─────────────────────────
-  agent:
+  # ─── review-agent (FastAPI — INTERNAL ONLY) ───────────────────────────────
+  # WARNING: In production, remove the `ports` mapping below.
+  # This service must be reachable ONLY from `backend` via the scr-network.
+  # The X-Service-Api-Key check is defense-in-depth, not a substitute for
+  # network isolation. See review-agent/README.md §Network Posture.
+  review-agent:
     build:
       context: ./review-agent
       dockerfile: Dockerfile
+    # Port published to host for local dev only — REMOVE in production
     ports:
-      - "5050:5050" # Expose FastAPI port
+      - "5050:5050"
     env_file:
       - ./review-agent/.env
     environment:
       PORT: 5050
-      # Point to Redis inside the webapp container
-      REDIS_URL: redis://webapp:6379/0
+      REDIS_URL: redis://redis:6379/0
     networks:
       - scr-network
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:5050/health"]
@@ -163,6 +172,8 @@ services:
       celery -A app.celery_app worker --loglevel=info --concurrency=2 --queues=celery
     env_file:
       - ./review-agent/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
     networks:
       - scr-network
     depends_on:
